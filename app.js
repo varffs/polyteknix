@@ -97,7 +97,7 @@ class App {
   updateDisplay() {
     const _this = this;
 
-    _this.lcd.printLineSync(0, ':] ' +  _this.formatFloat(_this.data.temperature.internal, 1) + 'c ' + _this.formatFloat(_this.data.humidity, 1) + '%');
+    _this.lcd.printLineSync(0, _this.getSmileyStatus() + ' ' +  _this.formatFloat(_this.data.temperature.internal, 1) + 'c ' + _this.formatFloat(_this.data.humidity, 1) + '%');
     _this.lcd.printLineSync(1, _this.formatFloat(_this.data.pressure, 0) + 'hPa ' + _this.formatFloat(_this.data.temperature.external, 1) + 'c ');
   }
 
@@ -105,6 +105,20 @@ class App {
     const _this = this;
 
     console.log('Posting this data to server', _this.data);
+  }
+
+  getSmileyStatus() {
+    if (this.data.temperature.internal > 33) {
+      return ':!';
+    } else if (this.data.temperature.internal > 30) {
+      return ':/';
+    } else if (this.data.temperature.internal > 23) {
+      return ':]';
+    } else if (this.data.temperature.internal > 18) {
+      return ':|';
+    } else {
+      return ':(';
+    }
   }
 
   formatFloat(number, decimalPlaces = 1) {
