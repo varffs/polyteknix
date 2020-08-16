@@ -1,0 +1,27 @@
+{
+  "name": "polyteknix",
+  "version": "0.1.0",
+  "description": "checking on the plants",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/varffs/polyteknix.git"
+  },
+  "keywords": [
+    "green"
+  ],
+  "author": "Patrick Best",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/varffs/polyteknix/issues"
+  },
+  "homepage": "https://github.com/varffs/polyteknix#readme",
+  "dependencies": {
+    "bme280": "^2.1.0",
+    "ds18b20": "^0.1.0",
+    "raspberrypi-liquid-crystal": "^1.15.0"
+  }
+}
