@@ -4,7 +4,7 @@ const { configureStore } = pkg;
 import LCD from "raspberrypi-liquid-crystal";
 const lcd = new LCD(1, 0x27, 16, 2);
 
-import Gpio from "onoff";
+import { Gpio } from "onoff";
 const led = new Gpio(17, "out");
 const button = new Gpio(27, "in", "rising", { debounceTimeout: 10 });
 
