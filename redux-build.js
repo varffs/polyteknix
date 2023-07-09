@@ -100,6 +100,16 @@ store.subscribe(() => {
 const renderData = (data) => {
   console.log(`int: ${formatFloat(data.temperature_internal)}c ${formatFloat(data.humidity_internal)}%`);
   console.log(`ext: ${formatFloat(data.temperature_external)}c`);
+
+  lcd.clearSync();
+
+  lcd.printLineSync(
+    0,
+    `int: ${formatFloat(data.temperature_internal)}c ${formatFloat(
+      data.humidity_internal
+    )}%`
+  );
+  lcd.printLineSync(1, `ext: ${formatFloat(data.temperature_external)}c`);
 }
 
 const renderTimer = (timer) => {
