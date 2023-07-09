@@ -10,6 +10,9 @@ const button = new Gpio(27, "in", "rising", { debounceTimeout: 10 });
 
 import aht20 from "aht20-sensor";
 
+import ds18b20 from "ds18b20";
+const oneWireTempId = "28-0301a279e8e6";
+
 const getRandomArbitrary = (min, max) => {
   return Math.random() * (max - min) + min;
 }
@@ -137,9 +140,19 @@ lcd.displaySync();
 lcd.clearSync();
 lcd.printLineSync(0, "starting up...");
 
-// On LED
+// On button LED
 
 led.writeSync(1);
+
+// Test ds18b20
+
+ds18b20.sensors(function (err, ids) {
+  if (err) {
+    console.log("ds18b20 error", err);
+  }
+
+  console.log("1w ds18b20 sensors", ids);
+});
 
 // Start polling data
 
@@ -172,14 +185,28 @@ const internalSensorPoll = setInterval(() => {
   //   type: "data/pressure",
   //   payload: getRandomArbitrary(920, 1000),
   // });
-}, 1000 * 5);
+}, 1000 * 60 * 5);
 
-const ds18b20Mock = setInterval(() => {
-  store.dispatch({
-    type: "data/temperature/external",
-    payload: getRandomArbitrary(7, 17),
+const externalSensorPoll = setInterval(() => {
+  ds18b20.temperature(oneWireTempId, function (err, value) {
+    // async
+    if (err) {
+      console.log("ds18b20 error", err);
+      console.log("error.code", err.code);
+
+      if (err.code === "ENOENT") {
+        clearInterval(externalSensorPoll);
+      }
+
+      return;
+    }
+
+    store.dispatch({
+      type: "data/temperature/external",
+      payload: value,
+    });
   });
-}, 3333);
+}, 1000 * 60 * 5);
 
 // Start the render loop
 
