@@ -1,6 +1,9 @@
 import pkg from '@reduxjs/toolkit';
 const { configureStore } = pkg;
 
+import axios from "axios";
+axios.defaults.headers.post['api-key'] = 'eccd71298a1210aa99da18743c0d49bbe0992b5049'; // key for list
+
 import LCD from "raspberrypi-liquid-crystal";
 const lcd = new LCD(1, 0x27, 16, 2);
 
@@ -172,19 +175,6 @@ const internalSensorPoll = setInterval(() => {
       payload: hum,
     });
   });
-
-  // store.dispatch({
-  //   type: "data/temperature/internal",
-  //   payload: getRandomArbitrary(10, 21),
-  // });
-  // store.dispatch({
-  //   type: "data/humidity/internal",
-  //   payload: getRandomArbitrary(55, 67),
-  // });
-  // store.dispatch({
-  //   type: "data/pressure",
-  //   payload: getRandomArbitrary(920, 1000),
-  // });
 }, 1000 * 60 * 5);
 
 const externalSensorPoll = setInterval(() => {
@@ -226,10 +216,43 @@ const displayLoop = setInterval(() => {
     default:
       return
   }
-}, 2000);
+}, 1000 * 60 * 5);
+
+const dataPush = setInterval(() => {
+  const state = store.getState();
+
+  axios
+    .post("http://iotplotter.com/api/v2/feed/408491097864656092", {
+      data: {
+        Internal_Temperature: [
+          {
+            value: state.data.temperature_internal,
+          },
+        ],
+        Internal_Humidity: [
+          {
+            value: state.data.humidity_internal,
+          },
+        ],
+        External_Tempurature: [
+          {
+            value: state.data.temperature_external,
+          },
+        ],
+      },
+    })
+    .then((response) => {
+      if (response.status !== 200) {
+        console.log(response);
+      }
+    });
+}, 1000 * 60 * 5);
 
 process.on("SIGINT", (_) => {
+  clearInterval(internalSensorPoll);
+  clearInterval(externalSensorPoll);
   clearInterval(displayLoop);
+  clearInterval(dataPush);
 
   lcd.noDisplaySync();
 
