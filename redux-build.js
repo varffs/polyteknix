@@ -164,11 +164,14 @@ const internalSensorPoll = setInterval(() => {
     const temp = await sensor.temperature();
     const hum = await sensor.humidity();
 
-    console.log(temp, hum);
+    const tempCalibrationOffset = 1.2; // degrees celsius offset
+    const tempCalibrated = temp + tempCalibrationOffset;
+
+    console.log(tempCalibrated, hum);
 
     store.dispatch({
       type: "data/temperature/internal",
-      payload: temp,
+      payload: tempCalibrated,
     });
     store.dispatch({
       type: "data/humidity/internal",
