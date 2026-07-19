@@ -27,7 +27,8 @@ gap.
 ## Non-goals
 
 - TIMER and MESSAGE display modes (unfinished stubs in `redux-build.js`) are
-  **dropped**. DEFAULT mode ships fully working. Re-add later if wanted.
+  **dropped** — only the stubs, not the mode system itself. Modes DEFAULT and
+  DIAG ship working (see Display modes). Re-add TIMER/MESSAGE later if wanted.
 - No monorepo migration. Empty `PiTeknix/` dir stays unused for now.
 - Music-streaming Pi, bathroom device, sensor-platform device — out of scope;
   separate specs later.
@@ -69,7 +70,7 @@ interval in virtual mode.
     pressure:             null,   // reserved (no sensor yet)
   },
   display: {
-    mode: 'DEFAULT',
+    mode: 'DEFAULT',              // cycles through displayModes (see below)
     isBacklit: false,
   },
   sensors: {
@@ -80,12 +81,35 @@ interval in virtual mode.
 ```
 
 Action types: `data/temperature/internal`, `data/temperature/external`,
-`data/humidity/internal`, `sensors/external/status`.
+`data/humidity/internal`, `sensors/external/status`, `display/next`.
+
+## Display modes
+
+Per `REDUX-SPEC.md`, modes live in a `displayModes` array and the button
+cycles through them with `getNextMode`. Two modes for the 16x2:
+
+- `DEFAULT` — live readings.
+- `DIAG` — external-sensor diagnosis, surfaced on the LCD itself (not just logs).
+
+```js
+const displayModes = ["DEFAULT", "DIAG"];
+const getNextMode = (mode) => displayModes[(displayModes.indexOf(mode) + 1) % displayModes.length];
+```
+
+The single hardware button (GPIO 27) dispatches `display/next`; the reducer
+advances `display.mode`; a listener re-renders. (redux-build.js used GPIO 27
+for the button and GPIO 17 for the on-LED — one button, so cycling walks the
+mode list.)
 
 ## Render
 
-Listener middleware subscribes to `data/*` and `sensors/*` actions and calls
-`renderData(state)`. DEFAULT layout on the 16x2:
+Per-mode pure render functions with the spec's signature `(state, display)`,
+plus a `renderDisplay(state, display)` dispatcher that switches on
+`state.display.mode`. Listener middleware subscribes to `data/*`, `sensors/*`
+and `display/next` actions and calls `renderDisplay`. The `displayLoop`
+setInterval is removed entirely.
+
+DEFAULT layout on the 16x2:
 
 ```
 int: 21.4c 63%
@@ -93,7 +117,17 @@ ext: -- (absent)
 ```
 
 `ext:` shows the value when present, or `--` plus a short status token when the
-external sensor is unavailable. `displayLoop` setInterval is removed entirely.
+external sensor is unavailable.
+
+DIAG layout — the external sensor diagnosis:
+
+```
+ext: absent
+no devices on bus
+```
+
+Line 0 is `ext: <external_status>`; line 1 is the diagnostic detail truncated
+to 16 chars.
 
 ## Dead external sensor + diagnostics (new capability)
 

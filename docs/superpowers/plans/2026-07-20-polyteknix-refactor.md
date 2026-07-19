@@ -605,11 +605,13 @@ git commit -m "feat: piteknix file dep, toolkit v2, secret-free config module"
 - Test: `~/Sites/worldofpi/polyteknix/src/store.test.js`
 
 **Interfaces:**
-- Produces: `initialState`, `appReducer`, and action-creator helpers from `src/store.js`:
+- Produces: `initialState`, `appReducer`, `displayModes`, `getNextMode`, and action-creator helpers from `src/store.js`:
   - `setInternalTemp(v)` → `{ type: "data/temperature/internal", payload: v }`
   - `setExternalTemp(v)` → `{ type: "data/temperature/external", payload: v }`
   - `setInternalHumidity(v)` → `{ type: "data/humidity/internal", payload: v }`
   - `setExternalStatus({status, detail})` → `{ type: "sensors/external/status", payload }`
+  - `nextMode()` → `{ type: "display/next" }` (reducer advances `display.mode` via `getNextMode`)
+  - `displayModes = ["DEFAULT", "DIAG"]`; `getNextMode(mode)` returns the next mode, cycling.
   - State shape per spec: `{ data:{temperature_internal,temperature_external,humidity_internal,pressure}, display:{mode:"DEFAULT",isBacklit:false}, sensors:{external_status:"unknown",external_diagnostic:null} }`
 
 - [ ] **Step 1: Write the failing test**
@@ -635,7 +637,17 @@ test("reducer records external sensor status + diagnostic", () => {
 test("unknown action returns state unchanged", () => {
   assert.equal(appReducer(initialState, { type: "nope" }), initialState);
 });
+
+test("display/next cycles DEFAULT -> DIAG -> DEFAULT", () => {
+  const s1 = appReducer(initialState, nextMode());
+  assert.equal(s1.display.mode, "DIAG");
+  const s2 = appReducer(s1, nextMode());
+  assert.equal(s2.display.mode, "DEFAULT");
+});
 ```
+
+(Add `nextMode` to the import line at the top of the test:
+`import { appReducer, initialState, setInternalTemp, setExternalStatus, nextMode } from "./store.js";`)
 
 - [ ] **Step 2: Run to verify failure**
 
@@ -656,10 +668,15 @@ export const initialState = {
   sensors: { external_status: "unknown", external_diagnostic: null },
 };
 
+export const displayModes = ["DEFAULT", "DIAG"];
+export const getNextMode = (mode) =>
+  displayModes[(displayModes.indexOf(mode) + 1) % displayModes.length];
+
 export const setInternalTemp = (v) => ({ type: "data/temperature/internal", payload: v });
 export const setExternalTemp = (v) => ({ type: "data/temperature/external", payload: v });
 export const setInternalHumidity = (v) => ({ type: "data/humidity/internal", payload: v });
 export const setExternalStatus = (payload) => ({ type: "sensors/external/status", payload });
+export const nextMode = () => ({ type: "display/next" });
 
 export function appReducer(state = initialState, action) {
   switch (action.type) {
@@ -678,6 +695,8 @@ export function appReducer(state = initialState, action) {
           external_diagnostic: action.payload.detail,
         },
       };
+    case "display/next":
+      return { ...state, display: { ...state.display, mode: getNextMode(state.display.mode) } };
     default:
       return state;
   }
@@ -687,7 +706,7 @@ export function appReducer(state = initialState, action) {
 - [ ] **Step 4: Run to verify pass**
 
 Run: `node --test src/store.test.js`
-Expected: PASS (3 tests).
+Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -706,10 +725,11 @@ git commit -m "feat: redux state shape + reducer with external sensor status"
 - Test: `~/Sites/worldofpi/polyteknix/src/render.test.js`
 
 **Interfaces:**
-- Consumes: `formatFloat` from `piteknix`; state shape from Task 7.
+- Consumes: `formatFloat` from `piteknix`; state shape + `display.mode` from Task 7.
 - Produces:
-  - `formatDataLines(state)` → `[string, string]` — pure, no I/O. Line 0: `int: <t>c <h>%`. Line 1: `ext: <t>c` when `temperature_external` is a number, else `ext: -- (<external_status>)`.
-  - `renderData(display, state)` — clears display and writes the two lines via `display.printLine`.
+  - `formatDataLines(state)` → `[string, string]` — DEFAULT mode, pure. Line 0: `int: <t>c <h>%`. Line 1: `ext: <t>c` when `temperature_external` is a number, else `ext: -- (<external_status>)`.
+  - `formatDiagLines(state)` → `[string, string]` — DIAG mode, pure. Line 0: `ext: <external_status>`. Line 1: `external_diagnostic` truncated to 16 chars (or `""`).
+  - `renderDisplay(state, display)` — dispatcher (spec signature `(state, display)`): clears display, then writes the two lines for the current `state.display.mode` via `display.printLine`. Unknown mode falls back to DEFAULT.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -718,20 +738,27 @@ Create `src/render.test.js`:
 ```js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatDataLines } from "./render.js";
+import { formatDataLines, formatDiagLines } from "./render.js";
 import { initialState } from "./store.js";
 
-test("formats internal + external when both present", () => {
+test("DEFAULT formats internal + external when both present", () => {
   const state = { ...initialState, data: { ...initialState.data, temperature_internal: 21.44, humidity_internal: 63.2, temperature_external: 12.8 } };
   const [l0, l1] = formatDataLines(state);
   assert.equal(l0, "int: 21.4c 63.2%");
   assert.equal(l1, "ext: 12.8c");
 });
 
-test("shows -- and status when external absent", () => {
+test("DEFAULT shows -- and status when external absent", () => {
   const state = { ...initialState, data: { ...initialState.data, temperature_internal: 20, humidity_internal: 50 }, sensors: { external_status: "absent", external_diagnostic: "x" } };
   const [, l1] = formatDataLines(state);
   assert.equal(l1, "ext: -- (absent)");
+});
+
+test("DIAG shows status + truncated diagnostic", () => {
+  const state = { ...initialState, sensors: { external_status: "absent", external_diagnostic: "no devices on 1-wire bus (check pull-up)" } };
+  const [l0, l1] = formatDiagLines(state);
+  assert.equal(l0, "ext: absent");
+  assert.equal(l1, "no devices on 1-"); // 16 chars
 });
 ```
 
@@ -755,8 +782,21 @@ export const formatDataLines = (state) => {
   return [line0, line1];
 };
 
-export const renderData = (display, state) => {
-  const [line0, line1] = formatDataLines(state);
+export const formatDiagLines = (state) => {
+  const { sensors } = state;
+  const line0 = `ext: ${sensors.external_status}`;
+  const line1 = (sensors.external_diagnostic || "").substring(0, 16);
+  return [line0, line1];
+};
+
+const MODE_FORMATTERS = {
+  DEFAULT: formatDataLines,
+  DIAG: formatDiagLines,
+};
+
+export const renderDisplay = (state, display) => {
+  const formatter = MODE_FORMATTERS[state.display.mode] || formatDataLines;
+  const [line0, line1] = formatter(state);
   display.clear();
   display.printLine(0, line0);
   display.printLine(1, line1);
@@ -766,7 +806,7 @@ export const renderData = (display, state) => {
 - [ ] **Step 4: Run to verify pass**
 
 Run: `node --test src/render.test.js`
-Expected: PASS (2 tests).
+Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -968,8 +1008,8 @@ import {
 } from "piteknix";
 
 import { loadConfig } from "./src/config.js";
-import { appReducer } from "./src/store.js";
-import { renderData } from "./src/render.js";
+import { appReducer, nextMode } from "./src/store.js";
+import { renderDisplay } from "./src/render.js";
 import { pollInternal, pollExternal } from "./src/sensors.js";
 import { buildPayload, pushData } from "./src/push.js";
 import axios from "axios";
@@ -987,8 +1027,11 @@ const button = createButton({ gpio: 27, virtualKey: "1" });
 // Redux + listener-driven render
 const listener = createListenerMiddleware();
 listener.startListening({
-  predicate: (action) => action.type.startsWith("data/") || action.type.startsWith("sensors/"),
-  effect: (_action, api) => renderData(display, api.getState()),
+  predicate: (action) =>
+    action.type.startsWith("data/") ||
+    action.type.startsWith("sensors/") ||
+    action.type === "display/next",
+  effect: (_action, api) => renderDisplay(api.getState(), display),
 });
 const store = configureStore({
   reducer: appReducer,
@@ -1015,7 +1058,8 @@ const push = setInterval(() => {
 if (isVirtualMode()) {
   setupKeyboardListener({ onDebug: () => console.log(JSON.stringify(store.getState(), null, 2)) });
 }
-button.watch(() => console.log("button pressed"));
+// Button (GPIO 27 / key "1") cycles display modes: DEFAULT <-> DIAG
+button.watch(() => store.dispatch(nextMode()));
 
 process.on("SIGINT", async () => {
   clearInterval(poll);
@@ -1105,6 +1149,7 @@ git push origin --force --tags
 
 **Spec coverage:**
 - Thin app on piteknix, listener render, no loop → Tasks 7, 8, 11. ✓
+- Display-mode system (REDUX-SPEC): `displayModes`/`getNextMode`/`display/next` + button cycling + per-mode render fns + `renderDisplay(state,display)` dispatcher → Tasks 7 (reducer + cycling), 8 (formatters + dispatcher), 11 (button → `nextMode()`, listener predicate). Modes DEFAULT + DIAG. ✓
 - Virtual-first dev/deploy unchanged → env auto-detect used throughout; Task 11 Step 4 smoke run. ✓
 - Hardware map (aht20 internal, ds18b20 external, lcd 16x2, button 27, led 17, iotplotter) → Task 11. ✓
 - State shape → Task 7. ✓
@@ -1117,4 +1162,4 @@ git push origin --force --tags
 
 **Placeholder scan:** No TBD/TODO; every code step shows complete code. ✓
 
-**Type consistency:** `diagnose()` return `{status,detail,busDevices,targetPresent,lastError}` defined in Task 4, consumed in Task 10 (`diag.status`, `diag.detail`). Action creators defined in Task 7, used in Tasks 8/10/11. `formatDataLines`/`renderData` defined Task 8, used Task 11. `buildPayload`/`pushData` defined Task 9, used Task 11. `loadConfig` fields defined Task 6, used Task 11. Consistent. ✓
+**Type consistency:** `diagnose()` return `{status,detail,busDevices,targetPresent,lastError}` defined in Task 4, consumed in Task 10 (`diag.status`, `diag.detail`). Action creators defined in Task 7, used in Tasks 8/10/11. `formatDataLines`/`formatDiagLines`/`renderDisplay` defined Task 8, `renderDisplay` used Task 11. `displayModes`/`getNextMode`/`nextMode` defined Task 7, `nextMode` used Task 11. `buildPayload`/`pushData` defined Task 9, used Task 11. `loadConfig` fields defined Task 6, used Task 11. Consistent. ✓
