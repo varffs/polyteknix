@@ -1,0 +1,16 @@
+export const buildPayload = (state) => {
+  const { data, sensors } = state;
+  const feed = {};
+  if (data.temperature_internal !== null) feed.Internal_Temperature = [{ value: data.temperature_internal }];
+  if (data.humidity_internal !== null) feed.Internal_Humidity = [{ value: data.humidity_internal }];
+  if (typeof data.temperature_external === "number") feed.External_Temperature = [{ value: data.temperature_external }];
+  feed.External_Status = [{ value: sensors.external_status }];
+  return { data: feed };
+};
+
+export const pushData = async (axiosInstance, { feedId, key }, state) => {
+  if (!key) return null;
+  return axiosInstance.post(`http://iotplotter.com/api/v2/feed/${feedId}`, buildPayload(state), {
+    headers: { "api-key": key },
+  });
+};
