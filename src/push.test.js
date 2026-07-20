@@ -12,6 +12,14 @@ test("payload omits null fields, keeps status", () => {
   assert.equal(p.data.External_Status[0].value, "absent");
 });
 
+test("payload preserves genuine 0 readings (not omitted as falsy)", () => {
+  const state = { ...initialState, data: { ...initialState.data, temperature_internal: 0, humidity_internal: 0, temperature_external: 0 } };
+  const p = buildPayload(state);
+  assert.equal(p.data.Internal_Temperature[0].value, 0);
+  assert.equal(p.data.Internal_Humidity[0].value, 0);
+  assert.equal(p.data.External_Temperature[0].value, 0);
+});
+
 test("pushData is a no-op without a key", async () => {
   let called = false;
   const fakeAxios = { post: async () => { called = true; } };
