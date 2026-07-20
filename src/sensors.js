@@ -7,7 +7,12 @@ export const pollExternal = async (sensor, dispatch) => {
     dispatch(setExternalStatus({ status: "ok", detail: `reading ${temperature}c` }));
   } catch {
     dispatch(setExternalTemp(null));
-    const diag = await sensor.diagnose();
+    let diag;
+    try {
+      diag = await sensor.diagnose();
+    } catch (e) {
+      diag = { status: "error", detail: `diagnose failed: ${e.message}` };
+    }
     dispatch(setExternalStatus({ status: diag.status, detail: diag.detail }));
   }
 };
