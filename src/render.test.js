@@ -59,3 +59,16 @@ test("renderDisplay falls back to DEFAULT formatter for an unknown mode", () => 
   const [l0, l1] = formatDataLines(state);
   assert.deepEqual(display.calls, [["clear"], ["printLine", 0, l0], ["printLine", 1, l1]]);
 });
+
+test("renderDisplay does not throw on all-null initial state and prints graceful placeholders", () => {
+  const display = makeFakeDisplay();
+  assert.doesNotThrow(() => renderDisplay(initialState, display));
+  assert.equal(display.calls[0][0], "clear");
+  assert.equal(display.calls.length, 3);
+  const [, line0Num, line0] = display.calls[1];
+  const [, line1Num, line1] = display.calls[2];
+  assert.equal(line0Num, 0);
+  assert.equal(line1Num, 1);
+  assert.equal(line0, "int: 0c 0%");
+  assert.equal(line1, "ext: -- (unknown)");
+});

@@ -2,13 +2,14 @@ import "dotenv/config";
 import { configureStore, createListenerMiddleware } from "@reduxjs/toolkit";
 import {
   isVirtualMode, getMode, createSensor, createDisplay, createButton, createLed, setupKeyboardListener,
+  cleanupKeyboardListener,
 } from "piteknix";
 
 import { loadConfig } from "./src/config.js";
 import { appReducer, nextMode } from "./src/store.js";
 import { renderDisplay } from "./src/render.js";
 import { pollInternal, pollExternal } from "./src/sensors.js";
-import { buildPayload, pushData } from "./src/push.js";
+import { pushData } from "./src/push.js";
 import axios from "axios";
 
 const cfg = loadConfig();
@@ -66,5 +67,8 @@ process.on("SIGINT", async () => {
   await display.cleanup();
   await internal.cleanup();
   await external.cleanup();
+  if (isVirtualMode()) {
+    cleanupKeyboardListener();
+  }
   process.exit();
 });
