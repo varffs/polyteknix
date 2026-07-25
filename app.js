@@ -6,7 +6,8 @@ import {
 } from "piteknix";
 
 import { loadConfig } from "./src/config.js";
-import { appReducer, nextMode } from "./src/store.js";
+import { appReducer, buttonPress } from "./src/store.js";
+import { registerBacklightTimeout } from "./src/backlight.js";
 import { renderDisplay } from "./src/render.js";
 import { pollInternal, pollExternal } from "./src/sensors.js";
 import { pushData } from "./src/push.js";
@@ -28,9 +29,17 @@ listener.startListening({
   predicate: (action) =>
     action.type.startsWith("data/") ||
     action.type.startsWith("sensors/") ||
-    action.type === "display/next",
+    action.type.startsWith("display/"),
   effect: (_action, api) => renderDisplay(api.getState(), display),
 });
+
+// Backlight hardware sync — fires only when isBacklit actually changes
+listener.startListening({
+  predicate: (_action, curr, prev) => curr.display.isBacklit !== prev.display.isBacklit,
+  effect: (_action, api) => display.setBacklight(api.getState().display.isBacklit),
+});
+
+registerBacklightTimeout(listener, { timeoutMs: cfg.backlightTimeoutMs });
 const store = configureStore({
   reducer: appReducer,
   middleware: (getDefault) => getDefault().prepend(listener.middleware),
@@ -54,6 +63,7 @@ const pollAll = async () => {
   }
 };
 await pollAll();
+store.dispatch(buttonPress()); // boot behaves like a first press: light up, arm the sleep timer
 const poll = setInterval(pollAll, cfg.pollMs);
 
 // in-flight guard: a slow POST skips the next tick instead of overlapping
@@ -74,7 +84,7 @@ if (isVirtualMode()) {
   setupKeyboardListener({ onDebug: () => console.log(JSON.stringify(store.getState(), null, 2)) });
 }
 // Button (GPIO 27 / key "1") cycles display modes: DEFAULT <-> DIAG
-button.watch(() => store.dispatch(nextMode()));
+button.watch(() => store.dispatch(buttonPress()));
 
 process.on("SIGINT", async () => {
   clearInterval(poll);
