@@ -40,10 +40,18 @@ await display.clear();
 display.printLine(0, "starting up...");
 await led.on();
 
-// initial + interval polling
+// initial + interval polling; in-flight guard so a slow poll (hung 1-wire
+// read) never overlaps the next tick
+let polling = false;
 const pollAll = async () => {
-  await pollInternal(internal, store.dispatch);
-  await pollExternal(external, store.dispatch);
+  if (polling) return;
+  polling = true;
+  try {
+    await pollInternal(internal, store.dispatch);
+    await pollExternal(external, store.dispatch);
+  } finally {
+    polling = false;
+  }
 };
 await pollAll();
 const poll = setInterval(pollAll, cfg.pollMs);

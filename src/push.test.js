@@ -10,6 +10,19 @@ test("payload omits null fields, keeps status", () => {
   assert.ok(p.data.Internal_Humidity);
   assert.equal(p.data.External_Temperature, undefined);
   assert.equal(p.data.External_Status[0].value, "absent");
+  assert.equal(p.data.External_Diagnostic[0].value, "x");
+});
+
+test("payload omits diagnostic when null", () => {
+  const p = buildPayload(initialState);
+  assert.equal(p.data.External_Diagnostic, undefined);
+});
+
+test("pushData posts to https endpoint", async () => {
+  let url = null;
+  const fakeAxios = { post: async (u) => { url = u; } };
+  await pushData(fakeAxios, { feedId: "f", key: "k" }, initialState);
+  assert.ok(url.startsWith("https://"));
 });
 
 test("payload preserves genuine 0 readings (not omitted as falsy)", () => {
