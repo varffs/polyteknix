@@ -83,7 +83,7 @@ const push = setInterval(async () => {
 if (isVirtualMode()) {
   setupKeyboardListener({ onDebug: () => console.log(JSON.stringify(store.getState(), null, 2)) });
 }
-// Button (GPIO 27 / key "1") cycles display modes: DEFAULT <-> DIAG
+// Button (GPIO 27 / key "1") is context-sensitive: wakes backlight when dark, cycles DEFAULT <-> DIAG when lit
 button.watch(() => store.dispatch(buttonPress()));
 
 process.on("SIGINT", async () => {
