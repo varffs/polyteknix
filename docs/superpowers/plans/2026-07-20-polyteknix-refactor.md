@@ -1109,7 +1109,7 @@ git commit -m "feat: rewrite app on piteknix — listener render, graceful exter
 
 - [ ] **Step 1: Rotate the key (MANUAL — user action)**
 
-At iotplotter.com, regenerate the feed api-key. The old key `eccd71298a1210aa99da18743c0d49bbe0992b5049` is compromised (public git history) and must be treated as burned. Put the new key in `~/Sites/worldofpi/polyteknix/.env` (gitignored):
+At iotplotter.com, regenerate the feed api-key. The old key `<OLD_IOTPLOTTER_KEY>` (redacted here; recover it from old git history of `redux-build.js` if needed) is compromised (public git history) and must be treated as burned. Put the new key in `~/Sites/worldofpi/polyteknix/.env` (gitignored):
 
 ```
 IOTPLOTTER_KEY=<new-key>
@@ -1117,7 +1117,7 @@ IOTPLOTTER_KEY=<new-key>
 
 - [ ] **Step 2: Confirm no secret remains in the working tree**
 
-Run: `cd ~/Sites/worldofpi/polyteknix && grep -rn "eccd71298a1210aa99da18743c0d49bbe0992b5049" . --exclude-dir=node_modules --exclude-dir=.git`
+Run: `cd ~/Sites/worldofpi/polyteknix && grep -rn "<OLD_IOTPLOTTER_KEY>" . --exclude-dir=node_modules --exclude-dir=.git` (substitute the real old key)
 Expected: no matches (the string only lives in old git history now).
 
 - [ ] **Step 3: Scrub history with git filter-repo**
@@ -1125,13 +1125,13 @@ Expected: no matches (the string only lives in old git history now).
 ```bash
 cd ~/Sites/worldofpi/polyteknix
 pip install git-filter-repo 2>/dev/null || brew install git-filter-repo
-echo "eccd71298a1210aa99da18743c0d49bbe0992b5049==>REDACTED" > /tmp/pt-secrets.txt
+echo "<OLD_IOTPLOTTER_KEY>==>REDACTED" > /tmp/pt-secrets.txt  # substitute the real old key
 git filter-repo --replace-text /tmp/pt-secrets.txt --force
 ```
 
 - [ ] **Step 4: Verify history is clean**
 
-Run: `git log --all -p | grep -c "eccd71298a1210aa99da18743c0d49bbe0992b5049" || echo 0`
+Run: `git log --all -p | grep -c "<OLD_IOTPLOTTER_KEY>" || echo 0` (substitute the real old key)
 Expected: `0`.
 
 - [ ] **Step 5: Force-push (MANUAL confirm — rewrites public history)**
