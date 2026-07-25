@@ -14,6 +14,17 @@ test("pollExternal on dead sensor dispatches null temp + diagnosis", async () =>
   assert.equal(status.payload.status, "absent");
 });
 
+test("pollExternal on stuck-85 sensor dispatches null temp + power-fault diagnosis", async () => {
+  const sensor = await createSensor({ type: "ds18b20", id: "28-0301a279e8e6", virtual: { fault: "stuck85" } });
+  const actions = [];
+  await pollExternal(sensor, (a) => actions.push(a));
+  const temp = actions.find((a) => a.type === "data/temperature/external");
+  const status = actions.find((a) => a.type === "sensors/external/status");
+  assert.equal(temp.payload, null);
+  assert.equal(status.payload.status, "error");
+  assert.match(status.payload.detail, /85/);
+});
+
 test("pollExternal on healthy sensor dispatches numeric temp + ok", async () => {
   const sensor = await createSensor({ type: "ds18b20", id: "28-x", virtual: { temperature: { min: 12, max: 12, initialValue: 12 } } });
   const actions = [];
