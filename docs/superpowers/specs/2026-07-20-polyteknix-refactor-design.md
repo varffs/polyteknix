@@ -21,8 +21,11 @@ gap.
 - `polyteknix` current state: `redux-build.js` is a half-done redux port that
   still drives the display on a `setInterval` loop. `app.js` is older. Both
   talk to hardware directly.
-- Consumed as a **local file dependency** (`file:../piteknix`). Work happens in
-  place in the existing `polyteknix` git repo; history preserved.
+- Consumed as a **GitHub dependency** (`github:varffs/piteknix#v0.1.0`) since the
+  lib was published at https://github.com/varffs/piteknix (2026-07-25; originally
+  a local `file:../piteknix` dep during development — use `npm link` for in-place
+  lib work). App work happens in the existing `polyteknix` git repo; history
+  preserved.
 
 ## Non-goals
 
@@ -193,7 +196,7 @@ Bugs found while porting become lib fixes + a regression test each.
 
 1. `piteknix`: `diagnose()` on ds18b20 (+ virtual simulation hooks); any fixes
    surfaced during integration; the test suite above.
-2. `polyteknix`: new `app.js` on `piteknix`; `file:../piteknix` dep; `.env`
+2. `polyteknix`: new `app.js` on `piteknix`; `github:varffs/piteknix#v0.1.0` dep; `.env`
    handling; stub modes removed; old `redux-build.js` / dead `app.js` retired.
 3. Security: key rotated, env-loaded, history scrubbed.
 4. Verified running in virtual mode end to end; ready to deploy to the Pi.

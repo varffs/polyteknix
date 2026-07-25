@@ -56,9 +56,18 @@ const pollAll = async () => {
 await pollAll();
 const poll = setInterval(pollAll, cfg.pollMs);
 
-const push = setInterval(() => {
-  pushData(axios, { feedId: cfg.feedId, key: cfg.iotplotterKey }, store.getState())
-    .catch((e) => console.error("push failed:", e.message));
+// in-flight guard: a slow POST skips the next tick instead of overlapping
+let pushing = false;
+const push = setInterval(async () => {
+  if (pushing) return;
+  pushing = true;
+  try {
+    await pushData(axios, { feedId: cfg.feedId, key: cfg.iotplotterKey }, store.getState());
+  } catch (e) {
+    console.error("push failed:", e.message);
+  } finally {
+    pushing = false;
+  }
 }, cfg.pollMs);
 
 if (isVirtualMode()) {

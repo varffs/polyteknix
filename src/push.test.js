@@ -18,6 +18,18 @@ test("payload omits diagnostic when null", () => {
   assert.equal(p.data.External_Diagnostic, undefined);
 });
 
+test("payload omits undefined readings and diagnostic", () => {
+  const state = {
+    ...initialState,
+    data: { ...initialState.data, temperature_internal: undefined, humidity_internal: undefined },
+    sensors: { external_status: "ok", external_diagnostic: undefined },
+  };
+  const p = buildPayload(state);
+  assert.equal(p.data.Internal_Temperature, undefined);
+  assert.equal(p.data.Internal_Humidity, undefined);
+  assert.equal(p.data.External_Diagnostic, undefined);
+});
+
 test("pushData posts to https endpoint", async () => {
   let url = null;
   const fakeAxios = { post: async (u) => { url = u; } };
