@@ -45,6 +45,10 @@ const store = configureStore({
   middleware: (getDefault) => getDefault().prepend(listener.middleware),
 });
 
+// boot behaves like a first press: light up, arm the sleep timer. Dispatched
+// before the initial poll so a slow 1-wire read can't delay arming it.
+store.dispatch(buttonPress());
+
 await display.clear();
 display.printLine(0, "starting up...");
 await led.on();
@@ -63,7 +67,6 @@ const pollAll = async () => {
   }
 };
 await pollAll();
-store.dispatch(buttonPress()); // boot behaves like a first press: light up, arm the sleep timer
 const poll = setInterval(pollAll, cfg.pollMs);
 
 // in-flight guard: a slow POST skips the next tick instead of overlapping

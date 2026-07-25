@@ -86,9 +86,10 @@ The existing render listener predicate widens from `display/next` to the
 - `src/config.js`: `backlightTimeoutMs: 30_000` constant (not
   env-driven — YAGNI). Tests don't need a config override — they pass a
   short `timeoutMs` straight into `registerBacklightTimeout`.
-- `app.js` after the initial render: `store.dispatch(buttonPress())` —
-  boot literally *is* the first press: lights the backlight, arms the
-  timer. No special-cased boot path.
+- `app.js` immediately after store creation (before the startup message
+  and initial poll): `store.dispatch(buttonPress())` — boot literally *is*
+  the first press: lights the backlight, arms the timer promptly even if
+  the first 1-wire poll is slow. No special-cased boot path.
 
 ### Error handling
 
