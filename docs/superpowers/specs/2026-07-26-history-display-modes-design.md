@@ -102,20 +102,25 @@ calendar days — the device is answering a question about last night, not about
 `getNextMode` cycling and the backlight rules are untouched: four modes is still
 tolerable on a single button.
 
-Both new screens are drawn to fit 16 characters **with a negative sign present** — the
-polytunnel goes below zero, and the obvious `24h L -3.2 H 31.4` layout overflows at 17
-characters:
+Both new screens are drawn to fit 16 characters at the **worst realistic value width** —
+a two-digit negative minimum and a two-digit maximum, e.g. `-19.9` / `49.9`. The
+polytunnel goes below zero, so the obvious `24h L -3.2 H 31.4` layout is wrong twice
+over: it overflows at 17 characters, and shortening it only to `i24h L-3.2 H31.4` (16)
+still overflows the moment the minimum reaches -13.2. Hence three-character labels:
 
 ```
-MINMAX    |i24h L-3.2 H31.4|
-          |e24h  no data   |
+MINMAX    |i24 L-3.2 H31.4 |     worst case: |i24 L-19.9 H49.9| = 16
+          |e24 L-- H--     |
 
 DAYCOMP   |tdy L-3.2 H31.4 |
           |yst L-1.9 H28.8 |
 ```
 
+All four lines come from one helper, so missing data renders `L-- H--` everywhere
+rather than a second "no data" wording.
+
 MINMAX line 1 shows the external probe, which is currently dead — it renders
-`e24h  no data` until the probe is replaced, then starts working with no code change.
+`e24 L-- H--` until the probe is replaced, then starts working with no code change.
 DAYCOMP is internal-only; an external equivalent can be added later as another mode if
 it turns out to be wanted.
 
@@ -134,6 +139,10 @@ Consequences of the no-persistence decision, accepted deliberately:
 
 - DAYCOMP renders `yst L-- H--` until the device has been running across a midnight.
   It self-heals overnight.
+- Adding two modes changes the button cycle from `DEFAULT → DIAG` to
+  `DEFAULT → MINMAX → DAYCOMP → DIAG`, so DIAG moves from one press away to three.
+  The existing cycling test in `store.test.js` asserts the old order and must be
+  updated as part of this work.
 - All history is lost on restart or power cut.
 - For roughly the first hour after a restart, MINMAX's "24h" window contains only the
   samples taken since boot. The label still reads `24h`; it is not qualified.
