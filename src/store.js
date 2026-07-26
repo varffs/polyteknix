@@ -17,7 +17,8 @@ export const setInternalTemp = (v) => ({ type: "data/temperature/internal", payl
 export const setExternalTemp = (v) => ({ type: "data/temperature/external", payload: v });
 export const setInternalHumidity = (v) => ({ type: "data/humidity/internal", payload: v });
 export const setExternalStatus = (payload) => ({ type: "sensors/external/status", payload });
-export const nextMode = () => ({ type: "display/next" });
+export const buttonPress = () => ({ type: "display/buttonPress" });
+export const sleep = () => ({ type: "display/sleep" });
 
 export function appReducer(state = initialState, action) {
   switch (action.type) {
@@ -36,8 +37,13 @@ export function appReducer(state = initialState, action) {
           external_diagnostic: action.payload.detail,
         },
       };
-    case "display/next":
+    case "display/buttonPress":
+      if (!state.display.isBacklit) {
+        return { ...state, display: { ...state.display, isBacklit: true } };
+      }
       return { ...state, display: { ...state.display, mode: getNextMode(state.display.mode) } };
+    case "display/sleep":
+      return { ...state, display: { ...state.display, isBacklit: false, mode: "DEFAULT" } };
     default:
       return state;
   }

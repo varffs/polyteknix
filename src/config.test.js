@@ -6,6 +6,7 @@ test("loadConfig reads key from env", () => {
   const cfg = loadConfig({ IOTPLOTTER_KEY: "abc", VIRTUAL_MODE: "false" });
   assert.equal(cfg.iotplotterKey, "abc");
   assert.equal(cfg.feedId, "408491097864656092");
+  assert.equal(cfg.backlightTimeoutMs, 30000);
 });
 
 test("loadConfig throws on missing key in hardware mode", () => {
