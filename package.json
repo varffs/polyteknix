@@ -26,6 +26,6 @@
     "@reduxjs/toolkit": "^2.11.2",
     "axios": "^1.4.0",
     "dotenv": "^16.4.0",
-    "piteknix": "github:varffs/piteknix#v0.1.0"
+    "piteknix": "github:varffs/piteknix#v0.1.1"
   }
 }
