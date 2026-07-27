@@ -4,7 +4,7 @@
 
 **Goal:** Give the polytunnel LCD two history screens — rolling 24h min/max temperature, and today-vs-yesterday min/max — fed by an in-memory ring of sensor snapshots.
 
-**Architecture:** A `history.samples` array is added to the existing plain-object Redux state. A new `history/record` action, dispatched from `pollAll` after both sensor polls settle, appends a snapshot of `state.data` stamped with a caller-supplied timestamp, then prunes to 48 hours. All display values are derived by pure selectors over that array at render time — there are no running aggregates, no buckets, and nothing is written to disk.
+**Architecture:** A `history.samples` array is added to the existing plain-object Redux state. A new `history/record` action, dispatched from `pollAll` after both sensor polls settle, appends a snapshot of `state.data` stamped with a caller-supplied timestamp, then prunes to 49 hours. All display values are derived by pure selectors over that array at render time — there are no running aggregates, no buckets, and nothing is written to disk.
 
 **Tech Stack:** Node 16.14 (ESM), Redux Toolkit `configureStore` with a hand-written plain reducer, `node:test` + `node:assert/strict`, `piteknix` (pinned github dep) for `formatFloat`.
 
@@ -121,8 +121,9 @@ In `src/store.js`, add the constants and action creator near the existing ones:
 ```js
 /** Samples timestamped before this are from a pre-NTP boot clock, not real history. */
 export const SANITY_EPOCH = Date.UTC(2024, 0, 1);
-/** 48h, not 24h: DAYCOMP's "yesterday" needs data from up to two days back just after midnight. */
-export const HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000;
+/** 49h, not 48h: DAYCOMP's "yesterday" starts up to 48h59m before now on the
+ *  evening a DST fall-back lengthens a local day. */
+export const HISTORY_WINDOW_MS = 49 * 60 * 60 * 1000;
 /** Backstop against a clock anomaly inflating the ring. */
 export const HISTORY_MAX_SAMPLES = 1000;
 
@@ -345,7 +346,8 @@ git commit -m "feat: add pure window and min/max selectors over the sample ring"
 **Files:**
 - Modify: `src/render.js`
 - Modify: `src/store.js` (the `displayModes` array only)
-- Test: `src/render.test.js`, `src/store.test.js` (update one existing test)
+- Test: `src/render.test.js`, `src/store.test.js` (update one existing test),
+  `src/backlight.test.js` (update two existing tests)
 
 **Interfaces:**
 - Consumes: `selectWindow`, `selectMinMax`, `selectDayMinMax`, `DAY_MS` from Task 2; `initialState` from Task 1.
@@ -355,7 +357,9 @@ git commit -m "feat: add pure window and min/max selectors over the sample ring"
   - `renderDisplay(state, display, now)` — third parameter added, defaults to `Date.now()`
   - `displayModes` → `["DEFAULT", "MINMAX", "DAYCOMP", "DIAG"]`
 
-**Note:** adding two modes breaks the existing `store.test.js` test `"buttonPress when lit cycles mode and keeps backlight on"`, which asserts `DEFAULT → DIAG`. Updating it is Step 1 below, not an accident.
+**Note:** adding two modes breaks existing tests that assert the old `DEFAULT → DIAG` cycle — `"buttonPress when lit cycles mode and keeps backlight on"` in `store.test.js`, and two tests in `backlight.test.js` (`"a press mid-window resets the timeout"` and `"press while lit cycles the mode"`) which assert `mode === "DIAG"` after two presses. Updating all three is Step 1 below, not an accident. In `backlight.test.js` the fix is mechanical: two presses now land on `MINMAX`, so change the two `"DIAG"` expectations to `"MINMAX"` and change nothing else in that file.
+
+**Note on precision:** min/max render as **whole degrees** (`formatFloat(v, 0)`), not one decimal. One decimal does not fit: the worst case is an all-day freeze where both values are two-digit negative, and `tdy L-12.4 H-10.1` is 17 characters. Whole degrees fit with margin and keep the L/H labels. `DEFAULT` still shows the live reading to one decimal.
 
 - [ ] **Step 1: Update the existing cycling test and write the new failing tests**
 
@@ -397,7 +401,7 @@ test("MINMAX shows internal 24h min/max and a placeholder for the dead external 
     { ts: at(2026, 6, 26, 11), temperature_internal: 31.44, temperature_external: null },
   ];
   const [l0, l1] = formatMinMaxLines(stateWithHistory(samples), NOW);
-  assert.equal(l0, "i24 L-3.2 H31.4");
+  assert.equal(l0, "i24 L-3 H31");
   assert.equal(l1, "e24 L-- H--");
 });
 
@@ -407,7 +411,7 @@ test("MINMAX shows external min/max once the probe reports", () => {
     { ts: at(2026, 6, 26, 11), temperature_internal: 20, temperature_external: 18.6 },
   ];
   const [, l1] = formatMinMaxLines(stateWithHistory(samples), NOW);
-  assert.equal(l1, "e24 L4.1 H18.6");
+  assert.equal(l1, "e24 L4 H19");
 });
 
 test("MINMAX on an empty ring renders placeholders on both lines", () => {
@@ -424,22 +428,25 @@ test("DAYCOMP shows today above yesterday", () => {
     { ts: at(2026, 6, 26, 11), temperature_internal: 31.4 },
   ];
   const [l0, l1] = formatDayCompLines(stateWithHistory(samples), NOW);
-  assert.equal(l0, "tdy L-3.2 H31.4");
-  assert.equal(l1, "yst L-1.9 H28.8");
+  assert.equal(l0, "tdy L-3 H31");
+  assert.equal(l1, "yst L-2 H29");
 });
 
 test("DAYCOMP shows a placeholder for yesterday before the first midnight", () => {
   const samples = [{ ts: at(2026, 6, 26, 11), temperature_internal: 31.4 }];
   const [l0, l1] = formatDayCompLines(stateWithHistory(samples), NOW);
-  assert.equal(l0, "tdy L31.4 H31.4");
+  assert.equal(l0, "tdy L31 H31");
   assert.equal(l1, "yst L-- H--");
 });
 
+// Worst case is an all-day freeze: BOTH values two-digit negative, on both days.
+// This is what a one-decimal layout could not fit.
 test("new formatters stay within 16 characters at worst-case values", () => {
   const samples = [
     { ts: at(2026, 6, 25, 4), temperature_internal: -19.9, temperature_external: -19.9 },
+    { ts: at(2026, 6, 25, 15), temperature_internal: -13.2, temperature_external: -13.2 },
     { ts: at(2026, 6, 26, 3), temperature_internal: -19.9, temperature_external: -19.9 },
-    { ts: at(2026, 6, 26, 11), temperature_internal: 49.9, temperature_external: 49.9 },
+    { ts: at(2026, 6, 26, 11), temperature_internal: -13.2, temperature_external: -13.2 },
   ];
   const state = stateWithHistory(samples);
   for (const line of [...formatMinMaxLines(state, NOW), ...formatDayCompLines(state, NOW)]) {
@@ -484,12 +491,14 @@ them at module evaluation time:
 import { formatFloat } from "piteknix";
 import { selectWindow, selectMinMax, selectDayMinMax, DAY_MS } from "./history.js";
 
-// formatFloat renders null as "0", which would be a lie for an absent reading,
-// so missing min/max data gets its own placeholder.
+// Whole degrees (0 dp): one decimal overflows 16 chars when both values are
+// two-digit negative, e.g. "tdy L-12.4 H-10.1" = 17. formatFloat also renders
+// null as "0", which would be a lie for an absent reading, so missing min/max
+// data gets its own placeholder rather than going through it.
 const minMaxLine = (label, mm) =>
   mm === null
     ? `${label} L-- H--`
-    : `${label} L${formatFloat(mm.min)} H${formatFloat(mm.max)}`;
+    : `${label} L${formatFloat(mm.min, 0)} H${formatFloat(mm.max, 0)}`;
 
 export const formatMinMaxLines = (state, now) => {
   const window = selectWindow(state.history.samples, DAY_MS, now);
@@ -537,7 +546,7 @@ Expected: PASS — 7 new render tests, the updated cycling test green, all other
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/render.js src/render.test.js src/store.js src/store.test.js
+git add src/render.js src/render.test.js src/store.js src/store.test.js src/backlight.test.js
 git commit -m "feat: add MINMAX and DAYCOMP display modes"
 ```
 
@@ -569,7 +578,8 @@ test("a poll cycle's dispatch sequence produces a renderable MINMAX screen", () 
   s = appReducer(s, setInternalTemp(31.4));
   s = appReducer(s, recordSample(t2));
 
-  assert.deepEqual(formatMinMaxLines(s, now), ["i24 L-3.2 H31.4", "e24 L-- H--"]);
+  // whole degrees: -3.2 -> "-3", 31.4 -> "31" (see Task 3's precision note)
+  assert.deepEqual(formatMinMaxLines(s, now), ["i24 L-3 H31", "e24 L-- H--"]);
 });
 ```
 
@@ -630,7 +640,7 @@ Check, in order:
 6. Press `d` to dump state and confirm `history.samples` is growing and every entry has a plausible `ts`.
 7. Leave it running ~1 minute and confirm the sample count keeps rising and nothing throws.
 
-Note `pollMs` is 3000ms in virtual mode, so the `HISTORY_MAX_SAMPLES` cap binds after ~50 minutes of wall clock rather than 48 hours. Do not try to exercise day-boundary behaviour this way — that is what the injected-timestamp tests are for.
+Note `pollMs` is 3000ms in virtual mode, so the `HISTORY_MAX_SAMPLES` cap binds after ~50 minutes of wall clock rather than 49 hours. Do not try to exercise day-boundary behaviour this way — that is what the injected-timestamp tests are for.
 
 - [ ] **Step 5: Run the full suite and commit**
 

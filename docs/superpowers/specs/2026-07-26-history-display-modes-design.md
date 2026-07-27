@@ -39,12 +39,15 @@ history: { samples: [] }
 Each sample is a flat snapshot:
 
 ```js
-{ ts, temperature_internal, temperature_external, humidity_internal }
+{ ts, temperature_internal, temperature_external, humidity_internal, pressure }
 ```
 
-The ring retains **48 hours** — 24h is not enough, because DAYCOMP's "yesterday" needs
-data from up to 48h ago just after midnight. At the 5-minute production poll interval
-that is ~576 entries, roughly 25 KB. A hard cap of 1000 entries backstops against
+The ring retains **49 hours**, not 48 — 24h is not enough, because DAYCOMP's "yesterday"
+needs data from up to two days back just after midnight, and a plain 48h window drops
+yesterday's 00:00–01:00 samples on the evening a `TZ=Europe/London` DST fall-back
+lengthens a local day to 25 hours: "yesterday" then starts up to 48h59m before now. At
+the 5-minute production poll interval 49h is ~588 entries, roughly 25 KB — about 12
+samples more than a flat 48h window. A hard cap of 1000 entries backstops against
 clock anomalies inflating the ring.
 
 Storing whole `data` snapshots rather than per-field series means humidity and external
@@ -66,10 +69,10 @@ payload carries only the timestamp. This keeps the reducer pure and lets tests d
 time by passing a timestamp rather than mocking the clock.
 
 On each `history/record` the reducer appends, then prunes entries older than
-`ts - 48h`, then — if still over the cap — drops from the oldest end until at the cap.
+`ts - 49h`, then — if still over the cap — drops from the oldest end until at the cap.
 
 Note the cap binds in virtual mode: `pollMs` is 3000ms there, so 1000 samples is about
-50 minutes of wall clock rather than 48 hours. Time-based window logic is exercised in
+50 minutes of wall clock rather than 49 hours. Time-based window logic is exercised in
 unit tests by injecting timestamps, not by leaving `npm run dev` running.
 
 ### Clock sanity
@@ -102,18 +105,27 @@ calendar days — the device is answering a question about last night, not about
 `getNextMode` cycling and the backlight rules are untouched: four modes is still
 tolerable on a single button.
 
-Both new screens are drawn to fit 16 characters at the **worst realistic value width** —
-a two-digit negative minimum and a two-digit maximum, e.g. `-19.9` / `49.9`. The
-polytunnel goes below zero, so the obvious `24h L -3.2 H 31.4` layout is wrong twice
-over: it overflows at 17 characters, and shortening it only to `i24h L-3.2 H31.4` (16)
-still overflows the moment the minimum reaches -13.2. Hence three-character labels:
+Min and max are rendered as **whole degrees**. One decimal place does not fit: the
+worst case is not "negative min, positive max" but an all-day freeze where *both*
+values are two-digit negative, and `tdy L-12.4 H-10.1` is 17 characters on a 16-column
+display. That is ordinary winter, not a contrived value. Whole degrees fit with margin
+(worst case `tdy L-20 H-13`, 13 characters) and keep the explicit L/H labelling, at the
+cost of 0.1° resolution on these two screens — `DEFAULT` still shows the live reading to
+one decimal, so the precision is not lost from the device, only from the summaries.
+
+This was an amendment made during the build, not the original decision: the layout
+originally drafted here kept one decimal place and only widened the three-character
+labels, on the assumption that the worst case was one negative and one positive value
+(e.g. `-3.2` / `31.4`). Implementation testing found the real worst case — both values
+two-digit negative on the same line, `tdy L-12.4 H-10.1` — overflows at 17 characters,
+which is what forced the drop to whole degrees above.
 
 ```
-MINMAX    |i24 L-3.2 H31.4 |     worst case: |i24 L-19.9 H49.9| = 16
+MINMAX    |i24 L-3 H31     |     worst case: |i24 L-20 H-13| = 13
           |e24 L-- H--     |
 
-DAYCOMP   |tdy L-3.2 H31.4 |
-          |yst L-1.9 H28.8 |
+DAYCOMP   |tdy L-3 H31     |
+          |yst L-2 H29     |
 ```
 
 All four lines come from one helper, so missing data renders `L-- H--` everywhere
@@ -141,8 +153,8 @@ Consequences of the no-persistence decision, accepted deliberately:
   It self-heals overnight.
 - Adding two modes changes the button cycle from `DEFAULT → DIAG` to
   `DEFAULT → MINMAX → DAYCOMP → DIAG`, so DIAG moves from one press away to three.
-  The existing cycling test in `store.test.js` asserts the old order and must be
-  updated as part of this work.
+  The existing cycling tests in `store.test.js` **and `backlight.test.js`** assert the
+  old order and must be updated as part of this work.
 - All history is lost on restart or power cut.
 - For roughly the first hour after a restart, MINMAX's "24h" window contains only the
   samples taken since boot. The label still reads `24h`; it is not qualified.
@@ -152,7 +164,7 @@ Consequences of the no-persistence decision, accepted deliberately:
 Everything added here is pure — no hardware, no filesystem, no clock mocking. Added to
 the existing 31 tests with `node --test`:
 
-- **Reducer:** appends a snapshot; prunes beyond 48h; enforces the cap; ignores
+- **Reducer:** appends a snapshot; prunes beyond 49h; enforces the cap; ignores
   timestamps below the sanity epoch; leaves other slices untouched.
 - **Selectors:** empty ring; a field that is null in every sample; a single sample;
   samples either side of a local midnight; window boundary exactness.
