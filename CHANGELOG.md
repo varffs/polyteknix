@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-27
+
+First tagged release. The device has been running unattended on the polytunnel Pi
+since the redux/`piteknix` rebuild; this stamps that state and the history feature
+on top of it.
+
 ### Added
 
 - LCD backlight sleeps after 30 s; button press wakes it, presses while lit cycle display modes and reset the timeout
