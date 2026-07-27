@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, HISTORY_MAX_SAMPLES, HISTORY_WINDOW_MS, SANITY_EPOCH } from "./store.js";
+import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, setInternalStatus, pushResult, ledLit, HISTORY_MAX_SAMPLES, HISTORY_WINDOW_MS, SANITY_EPOCH } from "./store.js";
 import { formatMinMaxLines } from "./render.js";
 
 test("reducer sets internal temperature", () => {
@@ -69,11 +69,14 @@ test("history/record appends a snapshot of current data stamped with the timesta
 
 test("history/record ignores timestamps below the sanity epoch", () => {
   const s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
-  assert.equal(s, initialState);
+  assert.equal(s.history.samples.length, 0);
+  assert.equal(s.led.clockWasInsane, true);
 });
 
 test("history/record ignores a non-finite timestamp", () => {
-  assert.equal(appReducer(initialState, recordSample(NaN)), initialState);
+  const s = appReducer(initialState, recordSample(NaN));
+  assert.equal(s.history.samples.length, 0);
+  assert.equal(s.led.clockWasInsane, true);
 });
 
 test("history/record prunes samples older than the retention window", () => {
@@ -120,4 +123,41 @@ test("a poll cycle's dispatch sequence produces a renderable MINMAX screen", () 
 
   // whole degrees: -3.2 -> "-3", 31.4 -> "31" (see Task 3's precision note)
   assert.deepEqual(formatMinMaxLines(s, now), ["i24 L-3 H31", "e24 L-- H--"]);
+});
+
+test("initial state carries the new sensor and led fields", () => {
+  assert.equal(initialState.sensors.internal_status, "unknown");
+  assert.equal(initialState.sensors.push_failures, 0);
+  assert.deepEqual(initialState.led, { seenFaultKey: null, isLit: false, clockWasInsane: false });
+});
+
+test("reducer records internal sensor status", () => {
+  const s = appReducer(initialState, setInternalStatus("error"));
+  assert.equal(s.sensors.internal_status, "error");
+});
+
+test("push failures accumulate and a success resets them", () => {
+  let s = appReducer(initialState, pushResult(false));
+  s = appReducer(s, pushResult(false));
+  assert.equal(s.sensors.push_failures, 2);
+  s = appReducer(s, pushResult(true));
+  assert.equal(s.sensors.push_failures, 0);
+});
+
+test("led/lit sets isLit and returns the same object when unchanged", () => {
+  const lit = appReducer(initialState, ledLit(true));
+  assert.equal(lit.led.isLit, true);
+  assert.equal(appReducer(lit, ledLit(true)), lit, "no-op dispatch must not produce a new state object");
+});
+
+test("an insane timestamp raises the sticky clock flag instead of being silently dropped", () => {
+  const s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  assert.equal(s.led.clockWasInsane, true);
+  assert.equal(s.history.samples.length, 0, "the bad sample must still be rejected");
+});
+
+test("a sane timestamp leaves the clock flag alone", () => {
+  const s = appReducer(initialState, recordSample(SANITY_EPOCH + 1000));
+  assert.equal(s.led.clockWasInsane, false);
+  assert.equal(s.history.samples.length, 1);
 });
