@@ -69,14 +69,12 @@ test("history/record appends a snapshot of current data stamped with the timesta
 
 test("history/record ignores timestamps below the sanity epoch", () => {
   const s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
-  assert.equal(s.history.samples.length, 0);
-  assert.equal(s.led.clockWasInsane, true);
+  assert.deepEqual(s, { ...initialState, led: { ...initialState.led, clockWasInsane: true } });
 });
 
 test("history/record ignores a non-finite timestamp", () => {
   const s = appReducer(initialState, recordSample(NaN));
-  assert.equal(s.history.samples.length, 0);
-  assert.equal(s.led.clockWasInsane, true);
+  assert.deepEqual(s, { ...initialState, led: { ...initialState.led, clockWasInsane: true } });
 });
 
 test("history/record prunes samples older than the retention window", () => {
