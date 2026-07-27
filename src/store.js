@@ -1,3 +1,5 @@
+import { selectFaultKey } from "./faults.js";
+
 export const initialState = {
   data: {
     temperature_internal: null,
@@ -40,7 +42,7 @@ export const setInternalStatus = (status) => ({ type: "sensors/internal/status",
 export const pushResult = (ok) => ({ type: "push/result", payload: ok });
 export const ledLit = (lit) => ({ type: "led/lit", payload: lit });
 
-export function appReducer(state = initialState, action) {
+function baseReducer(state = initialState, action) {
   switch (action.type) {
     case "data/temperature/internal":
       return { ...state, data: { ...state.data, temperature_internal: action.payload } };
@@ -57,11 +59,21 @@ export function appReducer(state = initialState, action) {
           external_diagnostic: action.payload.detail,
         },
       };
-    case "display/buttonPress":
+    case "display/buttonPress": {
       if (!state.display.isBacklit) {
         return { ...state, display: { ...state.display, isBacklit: true } };
       }
-      return { ...state, display: { ...state.display, mode: getNextMode(state.display.mode) } };
+      const mode = getNextMode(state.display.mode);
+      const next = { ...state, display: { ...state.display, mode } };
+      if (mode !== "DIAG") return next;
+      // Reaching DIAG means someone is standing at the device reading the
+      // fault detail — that IS the acknowledgement. Clear the sticky clock
+      // flag first, then capture the key from the post-clear state: capture it
+      // first and seenFaultKey keeps a "clk" the live key no longer has, the
+      // two never match, and the LED re-arms the moment it is acknowledged.
+      const cleared = { ...next, led: { ...next.led, clockWasInsane: false } };
+      return { ...cleared, led: { ...cleared.led, seenFaultKey: selectFaultKey(cleared) } };
+    }
     case "display/sleep":
       return { ...state, display: { ...state.display, isBacklit: false, mode: "DEFAULT" } };
     case "sensors/internal/status":
@@ -97,4 +109,16 @@ export function appReducer(state = initialState, action) {
     default:
       return state;
   }
+}
+
+/** A fault can clear via several different actions. Normalising once, after
+ *  the switch, means no path can forget to drop a stale acknowledgement — and
+ *  without that drop, a fault that clears and returns would stay silent. */
+const forgetAcknowledgementWhenHealthy = (state) =>
+  state.led.seenFaultKey !== null && selectFaultKey(state) === ""
+    ? { ...state, led: { ...state.led, seenFaultKey: null } }
+    : state;
+
+export function appReducer(state = initialState, action) {
+  return forgetAcknowledgementWhenHealthy(baseReducer(state, action));
 }

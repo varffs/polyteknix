@@ -159,3 +159,48 @@ test("a sane timestamp leaves the clock flag alone", () => {
   assert.equal(s.led.clockWasInsane, false);
   assert.equal(s.history.samples.length, 1);
 });
+
+test("cycling into DIAG acknowledges the current fault set", () => {
+  let s = appReducer(initialState, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = appReducer(s, buttonPress()); // dark -> wake, mode DEFAULT
+  s = appReducer(s, buttonPress()); // MINMAX
+  s = appReducer(s, buttonPress()); // DAYCOMP
+  s = appReducer(s, buttonPress()); // DIAG
+  assert.equal(s.display.mode, "DIAG");
+  assert.equal(s.led.seenFaultKey, "ext");
+});
+
+test("acknowledging clears the sticky clock flag and does not leave a key that can never match", () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  s = appReducer(s, setExternalStatus({ status: "absent", detail: "no bus" }));
+  assert.equal(s.led.clockWasInsane, true);
+
+  s = appReducer(s, buttonPress());
+  s = appReducer(s, buttonPress());
+  s = appReducer(s, buttonPress());
+  s = appReducer(s, buttonPress()); // DIAG
+  assert.equal(s.led.clockWasInsane, false);
+  assert.equal(s.led.seenFaultKey, "ext", "the key must be captured AFTER the clock flag is cleared");
+});
+
+test("passing through a non-DIAG mode does not acknowledge", () => {
+  let s = appReducer(initialState, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = appReducer(s, buttonPress()); // wake
+  s = appReducer(s, buttonPress()); // MINMAX
+  assert.equal(s.led.seenFaultKey, null);
+});
+
+test("going healthy drops the acknowledgement so a recurrence re-arms", () => {
+  let s = appReducer(initialState, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = appReducer(s, buttonPress());
+  s = appReducer(s, buttonPress());
+  s = appReducer(s, buttonPress());
+  s = appReducer(s, buttonPress()); // DIAG -> acknowledged
+  assert.equal(s.led.seenFaultKey, "ext");
+
+  s = appReducer(s, setExternalStatus({ status: "ok", detail: "reading 12c" }));
+  assert.equal(s.led.seenFaultKey, null, "healthy state must drop the stale acknowledgement");
+
+  s = appReducer(s, setExternalStatus({ status: "absent", detail: "no bus" }));
+  assert.equal(s.led.seenFaultKey, null, "the same fault returning must count as new");
+});
