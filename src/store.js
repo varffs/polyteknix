@@ -10,7 +10,7 @@ export const initialState = {
   history: { samples: [] },
 };
 
-export const displayModes = ["DEFAULT", "DIAG"];
+export const displayModes = ["DEFAULT", "MINMAX", "DAYCOMP", "DIAG"];
 export const getNextMode = (mode) =>
   displayModes[(displayModes.indexOf(mode) + 1) % displayModes.length];
 

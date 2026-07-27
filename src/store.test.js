@@ -23,13 +23,17 @@ test("buttonPress when dark wakes backlight without cycling mode", () => {
   assert.equal(s.display.mode, "DEFAULT");
 });
 
-test("buttonPress when lit cycles mode and keeps backlight on", () => {
+test("buttonPress when lit cycles through all four modes and back", () => {
   const lit = appReducer(initialState, buttonPress());
   const s1 = appReducer(lit, buttonPress());
-  assert.equal(s1.display.mode, "DIAG");
+  assert.equal(s1.display.mode, "MINMAX");
   assert.equal(s1.display.isBacklit, true);
   const s2 = appReducer(s1, buttonPress());
-  assert.equal(s2.display.mode, "DEFAULT");
+  assert.equal(s2.display.mode, "DAYCOMP");
+  const s3 = appReducer(s2, buttonPress());
+  assert.equal(s3.display.mode, "DIAG");
+  const s4 = appReducer(s3, buttonPress());
+  assert.equal(s4.display.mode, "DEFAULT");
 });
 
 test("sleep turns backlight off and resets mode to DEFAULT", () => {
