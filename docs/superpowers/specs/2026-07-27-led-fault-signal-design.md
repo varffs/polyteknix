@@ -111,9 +111,10 @@ isQuietPeriod(ts, { lat, lon, marginMs }) // → boolean
 
 - Quiet window is `[sunset + marginMs, sunrise − marginMs]`, `marginMs` = 30 min.
 - Spanning midnight is the whole difficulty: at 01:00 the governing pair is *yesterday's*
-  sunset and *today's* sunrise. The function builds candidate intervals from `ts − 24h`, `ts`
-  and `ts + 24h` and tests membership, rather than doing local-midnight arithmetic. No DST
-  branch, no `TZ` read — everything is UTC epoch milliseconds internally.
+  sunset and *today's* sunrise. Each solar day opens one window (its sunset + margin → the
+  next morning's sunrise − margin); the function tests membership of the two candidates
+  opened by `ts − 24h` and `ts`, which is sufficient — no later window can contain `ts`. No
+  local-midnight arithmetic, no DST branch, no `TZ` read: UTC epoch milliseconds throughout.
 - `ts < SANITY_EPOCH` → returns `true`. An unknowable time never lights the LED.
 - Takes `ts` as an argument and calls no clock itself, so it is testable at any date.
 
@@ -209,20 +210,22 @@ clears. Non-ext faults are rare and the flags are the more urgent news.
 |---|---|
 | `src/solar.js` | **new** — `isQuietPeriod` |
 | `src/solar.test.js` | **new** |
-| `src/led.js` | **new** — `selectFaultKey`, `selectArmed`, `registerLedBlink` |
+| `src/faults.js` | **new** — `selectFaults`, `selectFaultKey`, `selectArmed`. Imports nothing: `store.js` needs the key for acknowledgement and `led.js` needs action creators from `store.js`, so the selectors must live outside both or the imports cycle |
+| `src/faults.test.js` | **new** |
+| `src/led.js` | **new** — `registerLedBlink` only |
 | `src/led.test.js` | **new** |
 | `src/store.js` | `led` slice, `internal_status`, `push_failures`, ack-on-DIAG, sticky clock flag |
 | `src/sensors.js` | dispatch `internal_status` in both branches of `pollInternal` |
-| `src/push.js` | report push outcome to the caller |
 | `src/render.js` | DIAG line 1 fault flags |
 | `src/config.js` | `siteLat`, `siteLon`, blink timings, quiet margin, `LED_IGNORE_QUIET` |
 | `app.js` | `led.off()` at boot, register blink + hardware-sync listeners, dispatch push outcome |
 | `package.json` | add `suncalc` |
 | existing `*.test.js` | extend for the new state and render branches |
 
-`pushData` currently returns `null` when no key is configured (virtual mode). That must count
-as neither success nor failure — it must not increment the failure counter, or every virtual
-run arms the LED after 15 minutes.
+`src/push.js` needs no change. It already returns `null` when no key is configured (virtual
+mode) and throws on a failed POST — exactly the three-way outcome `app.js` needs. The `null`
+case must count as neither success nor failure, or every virtual run arms the LED after 15
+minutes.
 
 At boot, `await led.on()` in `app.js` is replaced by `await led.off()`. SIGINT cleanup already
 writes 0, but a crash or `pm2 restart` mid-run can leave the pin high, so boot forces a known
