@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, HISTORY_MAX_SAMPLES, SANITY_EPOCH } from "./store.js";
+import { formatMinMaxLines } from "./render.js";
 
 test("reducer sets internal temperature", () => {
   const s = appReducer(initialState, setInternalTemp(21.4));
@@ -104,4 +105,19 @@ test("history/record leaves the other slices untouched", () => {
   assert.equal(s.display, initialState.display);
   assert.equal(s.sensors, initialState.sensors);
   assert.equal(s.data, initialState.data);
+});
+
+test("a poll cycle's dispatch sequence produces a renderable MINMAX screen", () => {
+  const t1 = new Date(2026, 6, 26, 3, 0, 0).getTime();
+  const t2 = new Date(2026, 6, 26, 11, 0, 0).getTime();
+  const now = new Date(2026, 6, 26, 12, 0, 0).getTime();
+
+  let s = initialState;
+  s = appReducer(s, setInternalTemp(-3.2));
+  s = appReducer(s, recordSample(t1));
+  s = appReducer(s, setInternalTemp(31.4));
+  s = appReducer(s, recordSample(t2));
+
+  // whole degrees: -3.2 -> "-3", 31.4 -> "31" (see Task 3's precision note)
+  assert.deepEqual(formatMinMaxLines(s, now), ["i24 L-3 H31", "e24 L-- H--"]);
 });
