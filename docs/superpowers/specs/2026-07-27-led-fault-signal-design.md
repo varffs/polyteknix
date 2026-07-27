@@ -118,9 +118,13 @@ isQuietPeriod(ts, { lat, lon, marginMs }) // → boolean
 - `ts < SANITY_EPOCH` → returns `true`. An unknowable time never lights the LED.
 - Takes `ts` as an argument and calls no clock itself, so it is testable at any date.
 
-Sunrise/sunset come from **`suncalc`**: single file, no transitive dependencies, ES5/CJS so it
-runs on the device's armv6 Node 16.14, MIT. Version to be pinned at install; not yet verified
-against the registry. The alternative considered was hand-rolling the NOAA solar position
+Sunrise/sunset come from **`suncalc`**, pinned at `^2.0.1` (verified at install, 2026-07-28).
+Corrects the pre-install guess in the first draft of this spec, which said ES5/CJS: 2.0.1 is
+`"type": "module"` with an `exports` map offering both an ESM entry and a CJS one, and it
+exposes **named exports only — there is no default export**, so the import form is
+`import { getTimes } from "suncalc"`. Still a single file with no runtime dependencies, no
+native bindings and no postinstall, which is what actually matters for armv6 Node 16.14; the
+published source uses no syntax newer than Node 16. The alternative considered was hand-rolling the NOAA solar position
 algorithm (~40 lines) — rejected as owning astronomy edge cases for no gain. Fixed clock-hour
 quiet periods were rejected outright: at this latitude sunset swings from roughly 16:00 in
 December to roughly 21:30 in June, so any fixed window either mutes most of a summer evening

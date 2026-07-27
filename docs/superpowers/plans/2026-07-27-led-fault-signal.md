@@ -1137,6 +1137,10 @@ git commit -m "chore: release 2.1.0"
 ## Deploy (after merge, not part of the task sequence)
 
 1. On the device: `git checkout -- package-lock.json` before pulling — the device's npm 8 rewrites it.
-2. `git pull && npm install` — `suncalc` is pure JS with no build step, so armv6 is not a risk.
+2. `git pull && npm install` — `suncalc` 2.0.1 is a single pure-JS file with no runtime
+   dependencies, no native bindings and no postinstall, so armv6 is not a risk. It is ESM
+   with named exports only (no default export) — the import form is
+   `import { getTimes } from "suncalc"`. The device cannot run the suite, so a load-time
+   import error would only surface here: watch the first `pm2 logs polyteknix` after restart.
 3. `pm2 restart polyteknix` — and confirm `NODE_ENV=production` survived, since it lives only in pm2's saved dump. If the dump was rebuilt: `NODE_ENV=production pm2 restart polyteknix --update-env && pm2 save`.
 4. Sanity check: the LED should be dark on a device whose only fault is the known-dead external probe **after** you cycle to DIAG once. Before that first acknowledgement it will pulse — expected, that is the restart re-arm.
