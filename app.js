@@ -63,8 +63,9 @@ const pollAll = async () => {
   try {
     await pollInternal(internal, store.dispatch);
     await pollExternal(external, store.dispatch);
-    // one sample per cycle, after both sensors settle — a failed read records
-    // as null for that field rather than skipping the sample entirely
+    // one sample per cycle, after both sensors settle. A failed read records
+    // null for that field — pollExternal nulls before diagnosing, pollInternal
+    // nulls in its catch. See src/sensors.js.
     store.dispatch(recordSample(Date.now()));
   } finally {
     polling = false;

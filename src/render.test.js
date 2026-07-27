@@ -69,7 +69,7 @@ test("renderDisplay does not throw on all-null initial state and prints graceful
   const [, line1Num, line1] = display.calls[2];
   assert.equal(line0Num, 0);
   assert.equal(line1Num, 1);
-  assert.equal(line0, "int: 0c 0%");
+  assert.equal(line0, "int: -- --");
   assert.equal(line1, "ext: -- (unknown)");
 });
 
@@ -154,4 +154,11 @@ test("renderDisplay routes MINMAX and DAYCOMP to their formatters", () => {
     const [l0, l1] = formatter(state, NOW);
     assert.deepEqual(display.calls, [["clear"], ["printLine", 0, l0], ["printLine", 1, l1]]);
   }
+});
+
+test("renderDisplay defaults now to the current clock", () => {
+  const display = makeFakeDisplay();
+  const state = stateWithHistory([{ ts: Date.now(), temperature_internal: 7 }], "MINMAX");
+  renderDisplay(state, display);
+  assert.equal(display.calls[1][2], "i24 L7 H7");
 });

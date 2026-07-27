@@ -3,7 +3,10 @@ import { selectWindow, selectMinMax, selectDayMinMax, DAY_MS } from "./history.j
 
 export const formatDataLines = (state) => {
   const { data, sensors } = state;
-  const line0 = `int: ${formatFloat(data.temperature_internal)}c ${formatFloat(data.humidity_internal)}%`;
+  const line0 =
+    typeof data.temperature_internal === "number"
+      ? `int: ${formatFloat(data.temperature_internal)}c ${formatFloat(data.humidity_internal)}%`
+      : "int: -- --";
   const line1 =
     typeof data.temperature_external === "number"
       ? `ext: ${formatFloat(data.temperature_external)}c`

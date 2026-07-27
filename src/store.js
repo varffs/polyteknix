@@ -16,8 +16,9 @@ export const getNextMode = (mode) =>
 
 /** Samples timestamped before this are from a pre-NTP boot clock, not real history. */
 export const SANITY_EPOCH = Date.UTC(2024, 0, 1);
-/** 48h, not 24h: DAYCOMP's "yesterday" needs data from up to two days back just after midnight. */
-export const HISTORY_WINDOW_MS = 48 * 60 * 60 * 1000;
+/** 49h, not 48h: DAYCOMP's "yesterday" starts up to 48h59m before now on the
+ *  evening a DST fall-back lengthens a local day. */
+export const HISTORY_WINDOW_MS = 49 * 60 * 60 * 1000;
 /** Backstop against a clock anomaly inflating the ring. */
 export const HISTORY_MAX_SAMPLES = 1000;
 

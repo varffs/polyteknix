@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, HISTORY_MAX_SAMPLES, SANITY_EPOCH } from "./store.js";
+import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, HISTORY_MAX_SAMPLES, HISTORY_WINDOW_MS, SANITY_EPOCH } from "./store.js";
 import { formatMinMaxLines } from "./render.js";
 
 test("reducer sets internal temperature", () => {
@@ -76,10 +76,10 @@ test("history/record ignores a non-finite timestamp", () => {
   assert.equal(appReducer(initialState, recordSample(NaN)), initialState);
 });
 
-test("history/record prunes samples older than 48h", () => {
+test("history/record prunes samples older than the retention window", () => {
   const now = new Date(2026, 6, 26, 12, 0, 0).getTime();
-  const stale = { ts: now - 49 * 60 * 60 * 1000, temperature_internal: 1 };
-  const fresh = { ts: now - 1 * 60 * 60 * 1000, temperature_internal: 2 };
+  const stale = { ts: now - (HISTORY_WINDOW_MS + 60 * 60 * 1000), temperature_internal: 1 };
+  const fresh = { ts: now - (HISTORY_WINDOW_MS - 60 * 60 * 1000), temperature_internal: 2 };
   const s = appReducer(stateWithSamples([stale, fresh]), recordSample(now));
   assert.deepEqual(
     s.history.samples.map((x) => x.ts),
