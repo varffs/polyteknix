@@ -6,7 +6,7 @@ import {
 } from "piteknix";
 
 import { loadConfig } from "./src/config.js";
-import { appReducer, buttonPress } from "./src/store.js";
+import { appReducer, buttonPress, recordSample } from "./src/store.js";
 import { registerBacklightTimeout } from "./src/backlight.js";
 import { renderDisplay } from "./src/render.js";
 import { pollInternal, pollExternal } from "./src/sensors.js";
@@ -29,7 +29,8 @@ listener.startListening({
   predicate: (action) =>
     action.type.startsWith("data/") ||
     action.type.startsWith("sensors/") ||
-    action.type.startsWith("display/"),
+    action.type.startsWith("display/") ||
+    action.type.startsWith("history/"),
   effect: (_action, api) => renderDisplay(api.getState(), display),
 });
 
@@ -62,6 +63,10 @@ const pollAll = async () => {
   try {
     await pollInternal(internal, store.dispatch);
     await pollExternal(external, store.dispatch);
+    // one sample per cycle, after both sensors settle. A failed read records
+    // null for that field — pollExternal nulls before diagnosing, pollInternal
+    // nulls in its catch. See src/sensors.js.
+    store.dispatch(recordSample(Date.now()));
   } finally {
     polling = false;
   }

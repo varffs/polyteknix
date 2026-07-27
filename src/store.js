@@ -7,11 +7,20 @@ export const initialState = {
   },
   display: { mode: "DEFAULT", isBacklit: false },
   sensors: { external_status: "unknown", external_diagnostic: null },
+  history: { samples: [] },
 };
 
-export const displayModes = ["DEFAULT", "DIAG"];
+export const displayModes = ["DEFAULT", "MINMAX", "DAYCOMP", "DIAG"];
 export const getNextMode = (mode) =>
   displayModes[(displayModes.indexOf(mode) + 1) % displayModes.length];
+
+/** Samples timestamped before this are from a pre-NTP boot clock, not real history. */
+export const SANITY_EPOCH = Date.UTC(2024, 0, 1);
+/** 49h, not 48h: DAYCOMP's "yesterday" starts up to 48h59m before now on the
+ *  evening a DST fall-back lengthens a local day. */
+export const HISTORY_WINDOW_MS = 49 * 60 * 60 * 1000;
+/** Backstop against a clock anomaly inflating the ring. */
+export const HISTORY_MAX_SAMPLES = 1000;
 
 export const setInternalTemp = (v) => ({ type: "data/temperature/internal", payload: v });
 export const setExternalTemp = (v) => ({ type: "data/temperature/external", payload: v });
@@ -19,6 +28,7 @@ export const setInternalHumidity = (v) => ({ type: "data/humidity/internal", pay
 export const setExternalStatus = (payload) => ({ type: "sensors/external/status", payload });
 export const buttonPress = () => ({ type: "display/buttonPress" });
 export const sleep = () => ({ type: "display/sleep" });
+export const recordSample = (ts) => ({ type: "history/record", payload: ts });
 
 export function appReducer(state = initialState, action) {
   switch (action.type) {
@@ -44,6 +54,17 @@ export function appReducer(state = initialState, action) {
       return { ...state, display: { ...state.display, mode: getNextMode(state.display.mode) } };
     case "display/sleep":
       return { ...state, display: { ...state.display, isBacklit: false, mode: "DEFAULT" } };
+    case "history/record": {
+      const ts = action.payload;
+      if (!Number.isFinite(ts) || ts < SANITY_EPOCH) return state;
+      const appended = state.history.samples.concat({ ts, ...state.data });
+      const pruned = appended.filter((s) => s.ts > ts - HISTORY_WINDOW_MS);
+      const capped =
+        pruned.length > HISTORY_MAX_SAMPLES
+          ? pruned.slice(pruned.length - HISTORY_MAX_SAMPLES)
+          : pruned;
+      return { ...state, history: { samples: capped } };
+    }
     default:
       return state;
   }

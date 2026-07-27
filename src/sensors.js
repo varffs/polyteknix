@@ -34,5 +34,7 @@ export const pollInternal = async (sensor, dispatch) => {
     dispatch(setInternalHumidity(humidity));
   } catch (e) {
     console.error("internal sensor read failed:", e.message);
+    dispatch(setInternalTemp(null));
+    dispatch(setInternalHumidity(null));
   }
 };

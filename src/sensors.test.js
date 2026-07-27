@@ -51,9 +51,12 @@ test("pollInternal on healthy sensor dispatches numeric temp + humidity", async 
   assert.equal(humidity.payload, 50);
 });
 
-test("pollInternal on dead sensor dispatches nothing and does not throw", async () => {
+test("pollInternal on dead sensor dispatches null temp + null humidity and does not throw", async () => {
   const sensor = await createSensor({ type: "aht20", virtual: { fault: "enoent" } });
   const actions = [];
   await assert.doesNotReject(() => pollInternal(sensor, (a) => actions.push(a)));
-  assert.deepEqual(actions, []);
+  const temp = actions.find((a) => a.type === "data/temperature/internal");
+  const humidity = actions.find((a) => a.type === "data/humidity/internal");
+  assert.equal(temp.payload, null);
+  assert.equal(humidity.payload, null);
 });

@@ -31,7 +31,7 @@ test("a press mid-window resets the timeout", async () => {
   store.dispatch(buttonPress());          // lit -> cycles mode, re-arms timer
   await wait(120);                        // 240ms after first press, 120ms after second
   assert.equal(store.getState().display.isBacklit, true, "reset should have kept it lit");
-  assert.equal(store.getState().display.mode, "DIAG");
+  assert.equal(store.getState().display.mode, "MINMAX");
   await wait(160);                        // 280ms after second press — past its window
   assert.equal(store.getState().display.isBacklit, false);
 });
@@ -41,7 +41,7 @@ test("press while lit cycles the mode", async () => {
 
   store.dispatch(buttonPress());
   store.dispatch(buttonPress());
-  assert.equal(store.getState().display.mode, "DIAG");
+  assert.equal(store.getState().display.mode, "MINMAX");
   assert.equal(store.getState().display.isBacklit, true);
   await wait(50); // let the armed timer fire so no pending listener outlives the test
 });
