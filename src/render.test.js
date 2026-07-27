@@ -15,6 +15,15 @@ test("DEFAULT formats internal + external when both present", () => {
   assert.equal(l1, "ext: 12.8c");
 });
 
+// pollInternal dispatches temperature and humidity separately and we re-render
+// on each, so this intermediate state is reachable on sensor recovery
+test("DEFAULT shows a humidity placeholder when only the temperature has arrived", () => {
+  const state = { ...initialState, data: { ...initialState.data, temperature_internal: 21.44, humidity_internal: null } };
+  const [l0] = formatDataLines(state);
+  assert.equal(l0, "int: 21.4c --%");
+  assert.ok(l0.length <= 16);
+});
+
 test("DEFAULT shows -- and status when external absent", () => {
   const state = { ...initialState, data: { ...initialState.data, temperature_internal: 20, humidity_internal: 50 }, sensors: { external_status: "absent", external_diagnostic: "x" } };
   const [, l1] = formatDataLines(state);

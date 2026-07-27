@@ -1,11 +1,16 @@
 import { formatFloat } from "piteknix";
 import { selectWindow, selectMinMax, selectDayMinMax, DAY_MS } from "./history.js";
 
+// formatFloat renders null as "0". pollInternal dispatches temperature and
+// humidity as separate actions and we re-render on each, so between the two a
+// recovered sensor would briefly show a fabricated "0%" without this guard.
+const fmtHumidity = (v) => (typeof v === "number" ? formatFloat(v) : "--");
+
 export const formatDataLines = (state) => {
   const { data, sensors } = state;
   const line0 =
     typeof data.temperature_internal === "number"
-      ? `int: ${formatFloat(data.temperature_internal)}c ${formatFloat(data.humidity_internal)}%`
+      ? `int: ${formatFloat(data.temperature_internal)}c ${fmtHumidity(data.humidity_internal)}%`
       : "int: -- --";
   const line1 =
     typeof data.temperature_external === "number"
