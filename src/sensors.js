@@ -1,4 +1,4 @@
-import { setInternalTemp, setInternalHumidity, setExternalTemp, setExternalStatus } from "./store.js";
+import { setInternalTemp, setInternalHumidity, setExternalTemp, setExternalStatus, setInternalStatus } from "./store.js";
 
 const diagnoseAndDispatch = async (sensor, dispatch) => {
   dispatch(setExternalTemp(null));
@@ -32,9 +32,11 @@ export const pollInternal = async (sensor, dispatch) => {
     const { temperature, humidity } = await sensor.read();
     dispatch(setInternalTemp(temperature));
     dispatch(setInternalHumidity(humidity));
+    dispatch(setInternalStatus("ok"));
   } catch (e) {
     console.error("internal sensor read failed:", e.message);
     dispatch(setInternalTemp(null));
     dispatch(setInternalHumidity(null));
+    dispatch(setInternalStatus("error"));
   }
 };

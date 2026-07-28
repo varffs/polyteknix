@@ -1,5 +1,6 @@
 import { formatFloat } from "piteknix";
 import { selectWindow, selectMinMax, selectDayMinMax, DAY_MS } from "./history.js";
+import { selectFaults } from "./faults.js";
 
 // formatFloat renders null as "0". pollInternal dispatches temperature and
 // humidity as separate actions and we re-render on each, so between the two a
@@ -19,10 +20,16 @@ export const formatDataLines = (state) => {
   return [line0, line1];
 };
 
+// Non-external faults preempt the diagnostic text: 16x2 has no room for both,
+// they are rarer, and they are the more urgent news. The diagnostic returns
+// as soon as they clear.
 export const formatDiagLines = (state) => {
   const { sensors } = state;
   const line0 = `ext: ${sensors.external_status}`;
-  const line1 = (sensors.external_diagnostic || "").substring(0, 16);
+  const others = selectFaults(state).filter((key) => key !== "ext");
+  const line1 = others.length
+    ? others.join(" ")
+    : (sensors.external_diagnostic || "").substring(0, 16);
   return [line0, line1];
 };
 

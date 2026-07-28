@@ -11,5 +11,15 @@ export const loadConfig = (env = process.env) => {
     backlightTimeoutMs: 30000,
     tempCalibrationOffset: 1.2,
     externalSensorId: "28-0301a279e8e6",
+    // Polytunnel location, for the sunset/sunrise calculation. Not a secret.
+    siteLat: 50.7744,
+    siteLon: -2.4753,
+    quietMarginMs: 30 * 60 * 1000,
+    ledBlinkOnMs: 750,
+    ledBlinkOffMs: 2250,
+    ledQuietRecheckMs: 60000,
+    // Dev only: without this, evening work on the laptop shows a permanently
+    // dark virtual LED and reads as a broken feature.
+    ignoreQuiet: env.LED_IGNORE_QUIET === "true",
   };
 };

@@ -6,8 +6,10 @@ import {
 } from "piteknix";
 
 import { loadConfig } from "./src/config.js";
-import { appReducer, buttonPress, recordSample } from "./src/store.js";
+import { appReducer, buttonPress, recordSample, pushResult } from "./src/store.js";
 import { registerBacklightTimeout } from "./src/backlight.js";
+import { registerLedBlink } from "./src/led.js";
+import { isQuietPeriod } from "./src/solar.js";
 import { renderDisplay } from "./src/render.js";
 import { pollInternal, pollExternal } from "./src/sensors.js";
 import { pushData } from "./src/push.js";
@@ -40,6 +42,31 @@ listener.startListening({
   effect: (_action, api) => display.setBacklight(api.getState().display.isBacklit),
 });
 
+// LED hardware sync — fires only when isLit actually changes
+listener.startListening({
+  predicate: (_action, curr, prev) => curr.led.isLit !== prev.led.isLit,
+  // write() is async and the blink loop drives it up to 40x a minute, where the
+  // backlight is written twice a day. Awaiting it inside a catch keeps a failed
+  // GPIO write to one readable line instead of a listenerMiddleware/error
+  // stack trace, and keeps the failure out of the blink loop.
+  effect: async (_action, api) => {
+    try {
+      await led.write(api.getState().led.isLit);
+    } catch (e) {
+      console.error("led write failed:", e.message);
+    }
+  },
+});
+
+registerLedBlink(listener, {
+  onMs: cfg.ledBlinkOnMs,
+  offMs: cfg.ledBlinkOffMs,
+  quietRecheckMs: cfg.ledQuietRecheckMs,
+  isQuiet: (ts) =>
+    !cfg.ignoreQuiet &&
+    isQuietPeriod(ts, { lat: cfg.siteLat, lon: cfg.siteLon, marginMs: cfg.quietMarginMs }),
+});
+
 registerBacklightTimeout(listener, { timeoutMs: cfg.backlightTimeoutMs });
 const store = configureStore({
   reducer: appReducer,
@@ -52,7 +79,9 @@ store.dispatch(buttonPress());
 
 await display.clear();
 display.printLine(0, "starting up...");
-await led.on();
+// Force a known dark state: SIGINT cleanup writes 0, but a crash or a pm2
+// restart mid-run can leave the pin high.
+await led.off();
 
 // initial + interval polling; in-flight guard so a slow poll (hung 1-wire
 // read) never overlaps the next tick
@@ -80,9 +109,13 @@ const push = setInterval(async () => {
   if (pushing) return;
   pushing = true;
   try {
-    await pushData(axios, { feedId: cfg.feedId, key: cfg.iotplotterKey }, store.getState());
+    const res = await pushData(axios, { feedId: cfg.feedId, key: cfg.iotplotterKey }, store.getState());
+    // null means no key configured (virtual mode) — neither success nor
+    // failure, and counting it would arm the LED on every virtual run.
+    if (res !== null) store.dispatch(pushResult(true));
   } catch (e) {
     console.error("push failed:", e.message);
+    store.dispatch(pushResult(false));
   } finally {
     pushing = false;
   }
@@ -95,6 +128,12 @@ if (isVirtualMode()) {
 button.watch(() => store.dispatch(buttonPress()));
 
 process.on("SIGINT", async () => {
+  // First, before any hardware is torn down: cancel every pending listener
+  // task. Otherwise the blink loop's in-flight api.delay fires after
+  // led.cleanup() has unexported the pin and spends the rest of the shutdown
+  // writing to a closed fd. Also cancels the pending backlight timeout, which
+  // is what we want on the way out.
+  listener.clearListeners();
   clearInterval(poll);
   clearInterval(push);
   await led.cleanup();
