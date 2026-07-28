@@ -2,6 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, setInternalStatus, pushResult, ledLit, HISTORY_MAX_SAMPLES, HISTORY_WINDOW_MS, SANITY_EPOCH } from "./store.js";
 import { formatMinMaxLines } from "./render.js";
+import { selectArmed, selectFaults, selectFaultKey } from "./faults.js";
+
+/** dark -> wake (DEFAULT), then MINMAX, DAYCOMP, DIAG. */
+const pressToDiag = (state) => {
+  let s = state;
+  for (let i = 0; i < 4; i += 1) s = appReducer(s, buttonPress());
+  return s;
+};
 
 test("reducer sets internal temperature", () => {
   const s = appReducer(initialState, setInternalTemp(21.4));
@@ -170,17 +178,71 @@ test("cycling into DIAG acknowledges the current fault set", () => {
   assert.equal(s.led.seenFaultKey, "ext");
 });
 
-test("acknowledging clears the sticky clock flag and does not leave a key that can never match", () => {
+test("entering DIAG acknowledges the clock fault but leaves the flag raised to be read", () => {
   let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
   s = appReducer(s, setExternalStatus({ status: "absent", detail: "no bus" }));
   assert.equal(s.led.clockWasInsane, true);
 
-  s = appReducer(s, buttonPress());
-  s = appReducer(s, buttonPress());
-  s = appReducer(s, buttonPress());
-  s = appReducer(s, buttonPress()); // DIAG
+  s = pressToDiag(s);
+  assert.equal(s.led.clockWasInsane, true, "the flag must survive to reach the screen that shows it");
+  assert.equal(s.led.seenFaultKey, "clk|ext");
+  assert.equal(selectArmed(s), false, "having looked must disarm");
+});
+
+test("leaving DIAG clears the sticky clock flag without re-arming", () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  s = appReducer(s, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = pressToDiag(s);
+  assert.equal(s.led.clockWasInsane, true);
+
+  s = appReducer(s, buttonPress()); // DIAG -> DEFAULT, the flag has been read
   assert.equal(s.led.clockWasInsane, false);
-  assert.equal(s.led.seenFaultKey, "ext", "the key must be captured AFTER the clock flag is cleared");
+  assert.equal(s.led.seenFaultKey, "clk|ext", "the acknowledgement outlives the flag");
+  assert.equal(selectArmed(s), false, "live {ext} is contained by the acknowledged set");
+});
+
+test("the backlight timing out on DIAG also clears the sticky clock flag", () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  s = appReducer(s, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = pressToDiag(s);
+  assert.equal(s.led.clockWasInsane, true);
+
+  s = appReducer(s, sleep());
+  assert.equal(s.led.clockWasInsane, false);
+  assert.equal(selectArmed(s), false);
+});
+
+test("sleeping from a mode other than DIAG leaves the clock flag raised", () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  s = appReducer(s, buttonPress()); // wake
+  s = appReducer(s, buttonPress()); // MINMAX
+  s = appReducer(s, sleep());
+  assert.equal(s.led.clockWasInsane, true, "a screen that never showed clk cannot acknowledge it");
+  assert.equal(selectArmed(s), true);
+});
+
+test("a clock fault on its own is shown, cleared on exit, and then silent", () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  assert.equal(selectArmed(s), true);
+
+  s = pressToDiag(s);
+  assert.deepEqual(selectFaults(s), ["clk"], "the fault must be live on the DIAG screen");
+  assert.equal(selectArmed(s), false);
+
+  s = appReducer(s, buttonPress()); // leave DIAG
+  assert.equal(s.led.clockWasInsane, false);
+  assert.equal(selectFaultKey(s), "");
+  assert.equal(s.led.seenFaultKey, null, "the healthy-state reset must drop the acknowledgement");
+  assert.equal(selectArmed(s), false, "nothing left to nag about");
+});
+
+test("a new fault appearing while the user is on DIAG re-arms", () => {
+  let s = appReducer(initialState, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = pressToDiag(s);
+  assert.equal(selectArmed(s), false);
+
+  s = appReducer(s, setInternalStatus("error"));
+  assert.equal(selectArmed(s), true, "int was not in the acknowledged set");
 });
 
 test("passing through a non-DIAG mode does not acknowledge", () => {

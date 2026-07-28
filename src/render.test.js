@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { formatDataLines, formatDiagLines, formatMinMaxLines, formatDayCompLines, renderDisplay } from "./render.js";
-import { initialState } from "./store.js";
+import { appReducer, initialState, buttonPress, setExternalStatus, setInternalStatus, pushResult, recordSample, SANITY_EPOCH } from "./store.js";
 
 const makeFakeDisplay = () => {
   const calls = [];
@@ -180,22 +180,51 @@ test("DIAG shows the diagnostic when only the external sensor is faulty", () => 
   assert.deepEqual(formatDiagLines(state), ["ext: absent", "not on bus"]);
 });
 
+/** dark -> wake (DEFAULT), then MINMAX, DAYCOMP, DIAG. Driving the real
+ *  reducer is the point: a hand-built state with clockWasInsane set while the
+ *  mode is DIAG was unreachable, and hid a bug where entering DIAG cleared the
+ *  flag before this screen could ever render it. */
+const pressToDiag = (state) => {
+  let s = state;
+  for (let i = 0; i < 4; i += 1) s = appReducer(s, buttonPress());
+  return s;
+};
+
+const allFourFaults = () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1)); // clk
+  s = appReducer(s, setInternalStatus("error")); // int
+  for (let i = 0; i < 3; i += 1) s = appReducer(s, pushResult(false)); // psh
+  return appReducer(s, setExternalStatus({ status: "absent", detail: "not on bus" })); // ext
+};
+
 test("DIAG shows fault flags when a non-external fault is live", () => {
-  const state = {
-    ...initialState,
-    sensors: {
-      ...initialState.sensors,
-      external_status: "absent",
-      external_diagnostic: "not on bus",
-      internal_status: "error",
-      push_failures: 3,
-    },
-    led: { ...initialState.led, clockWasInsane: true },
-  };
+  const state = pressToDiag(allFourFaults());
+  assert.equal(state.display.mode, "DIAG");
   const [line0, line1] = formatDiagLines(state);
   assert.equal(line0, "ext: absent");
   assert.equal(line1, "int psh clk");
   assert.ok(line1.length <= 16);
+});
+
+test("renderDisplay prints the fault flags on the screen the press just opened", () => {
+  const state = pressToDiag(allFourFaults());
+  const display = makeFakeDisplay();
+  renderDisplay(state, display);
+  assert.deepEqual(display.calls, [["clear"], ["printLine", 0, "ext: absent"], ["printLine", 1, "int psh clk"]]);
+});
+
+test("the diagnostic returns to DIAG line 1 once the clock flag has been read", () => {
+  let s = appReducer(initialState, recordSample(SANITY_EPOCH - 1));
+  s = appReducer(s, setExternalStatus({ status: "absent", detail: "not on bus" }));
+
+  s = pressToDiag(s);
+  assert.deepEqual(formatDiagLines(s), ["ext: absent", "clk"]);
+
+  s = appReducer(s, buttonPress()); // leave DIAG — the sticky flag has been read
+  s = appReducer(s, buttonPress()); // MINMAX
+  s = appReducer(s, buttonPress()); // DAYCOMP
+  s = appReducer(s, buttonPress()); // DIAG again
+  assert.deepEqual(formatDiagLines(s), ["ext: absent", "not on bus"]);
 });
 
 test("DIAG flags appear even when the external sensor is fine", () => {

@@ -65,7 +65,7 @@ clock is insane we cannot compute sunset, so we cannot know whether lighting the
 permitted, so we must fail dark — meaning the fault could never signal at the time it occurs.
 Instead the flag is raised when a bad timestamp is seen and survives into sane time, so once
 NTP lands the LED reports, in daylight, that this Pi booted blind and dropped history. The
-flag is cleared on acknowledgement, not by the clock becoming sane.
+flag is cleared when the display **leaves** DIAG, not by the clock becoming sane.
 
 ### Fault key
 
@@ -89,16 +89,24 @@ Entering `DIAG` mode acknowledges the current fault set. Reaching DIAG requires 
 button while the backlight is lit, which requires standing at the device — so acknowledgement
 is physically identical to having looked.
 
-On acknowledgement, in this order:
+On entering DIAG: compute `faultKey` from the **current** state, `clk` included, and store it
+as `led.seenFaultKey`. `led.clockWasInsane` is **not** touched here.
 
-1. clear `led.clockWasInsane`
-2. compute `faultKey` from the **post-clear** state
-3. store it as `led.seenFaultKey`
+The sticky clock flag is cleared when the display **leaves** DIAG — on `display/sleep` and on
+the `buttonPress` that cycles DIAG round to DEFAULT. Only leaving DIAG clears it: sleeping from
+MINMAX would otherwise discard a fault the user never saw.
 
-The order is load-bearing. Clearing the sticky clock flag changes the fault key; if the key
-were captured before the clear, `seenFaultKey` would contain `clk` while the live key no
-longer did, the two would never match, and the LED would re-arm the instant it was
-acknowledged.
+This corrects the first draft, which cleared the flag *before* capturing the key on entry to
+DIAG. That made `clk` undisplayable and destroyed the evidence: `formatDiagLines` derives line 1
+from `selectFaults` on the same post-clear state, and `renderDisplay` only reaches it once the
+mode is already `DIAG`, so the flag was gone before the one screen that reports it ever
+rendered — with `clk` as the only fault the user walked out to a screen reading as healthy, and
+the flag never came back. The draft's clear-first ordering existed to stop acknowledgement from
+instantly re-arming, a hazard that only exists under string equality; with `selectArmed` testing
+containment, a live set that is a subset of the acknowledged one is not armed, so `clk`
+vanishing from the live set after being acknowledged is harmless. Clearing on exit rather than
+never is still necessary: a permanently-raised flag would displace the `diagnose()` text on DIAG
+line 1 for the rest of the process.
 
 Further rules:
 
@@ -193,7 +201,7 @@ Consequences worth stating:
 led: {
   seenFaultKey: null,      // fault key at last acknowledgement; null = nothing acknowledged
   isLit: false,            // desired GPIO state; hardware listener mirrors it
-  clockWasInsane: false,   // sticky, cleared on acknowledgement
+  clockWasInsane: false,   // sticky, cleared on leaving DIAG
 },
 sensors: {
   external_status,         // existing
@@ -253,9 +261,13 @@ Coverage required:
   midnight-spanning timestamp, a `ts < SANITY_EPOCH` timestamp.
 - `selectFaultKey`: healthy, each fault alone, several at once, fixed ordering, `"unknown"`
   statuses excluded.
-- Acknowledgement: arms on new fault, clears on DIAG entry, does **not** immediately re-arm
-  when the sticky clock flag was part of the acknowledged set, re-arms when the fault set
-  changes, resets `seenFaultKey` when everything goes healthy.
+- Acknowledgement: arms on new fault, disarms on DIAG entry, re-arms when a fault appears that
+  is **not** in the acknowledged set, does **not** re-arm when the set only shrinks, resets
+  `seenFaultKey` when everything goes healthy. The clock flag survives DIAG entry (so line 1 can
+  render `clk`), is cleared by both exits from DIAG, and does not re-arm when cleared. Any test
+  asserting a DIAG-mode state must reach it by dispatching `buttonPress` through the real
+  reducer — a hand-built `{ mode: "DIAG", clockWasInsane: true }` is unreachable and gives false
+  confidence.
 - Blink loop: pulses while armed, exits on disarm, leaves `isLit` false on exit, idles at the
   recheck interval while quiet, never dispatches `lit: true` while quiet.
 - Push counter: increments on failure, resets on success, threshold at 3, ignores the no-key

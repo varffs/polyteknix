@@ -42,6 +42,18 @@ export const setInternalStatus = (status) => ({ type: "sensors/internal/status",
 export const pushResult = (ok) => ({ type: "push/result", payload: ok });
 export const ledLit = (lit) => ({ type: "led/lit", payload: lit });
 
+/** The sticky clock flag has done its job once the DIAG screen carrying it has
+ *  been read, and it must go or it displaces the external diagnostic on line 1
+ *  for the rest of the process. Both ways out of DIAG count as read: cycling
+ *  on (DIAG wraps to DEFAULT) and the backlight timing out. Clearing it here
+ *  rather than on entry is what lets DIAG render "clk" at all; safe only
+ *  because selectArmed compares by containment, so the live set losing "clk"
+ *  after acknowledgement is not a new fault. */
+const forgetClockFlagOnLeavingDiag = (prev, next) =>
+  prev.display.mode === "DIAG" && next.led.clockWasInsane
+    ? { ...next, led: { ...next.led, clockWasInsane: false } }
+    : next;
+
 function baseReducer(state = initialState, action) {
   switch (action.type) {
     case "data/temperature/internal":
@@ -65,17 +77,23 @@ function baseReducer(state = initialState, action) {
       }
       const mode = getNextMode(state.display.mode);
       const next = { ...state, display: { ...state.display, mode } };
-      if (mode !== "DIAG") return next;
-      // Reaching DIAG means someone is standing at the device reading the
-      // fault detail — that IS the acknowledgement. Clear the sticky clock
-      // flag first, then capture the key from the post-clear state: capture it
-      // first and seenFaultKey keeps a "clk" the live key no longer has, the
-      // two never match, and the LED re-arms the moment it is acknowledged.
-      const cleared = { ...next, led: { ...next.led, clockWasInsane: false } };
-      return { ...cleared, led: { ...cleared.led, seenFaultKey: selectFaultKey(cleared) } };
+      if (mode === "DIAG") {
+        // Reaching DIAG means someone is standing at the device reading the
+        // fault detail — that IS the acknowledgement. Capture the key from the
+        // current state, "clk" included, and leave clockWasInsane raised: the
+        // screen this press opens is the only one that reports it, and DIAG's
+        // line 1 is derived from the same state. selectArmed compares by set
+        // containment, so an acknowledgement holding a "clk" the live key
+        // later loses does not re-arm.
+        return { ...next, led: { ...next.led, seenFaultKey: selectFaultKey(next) } };
+      }
+      return forgetClockFlagOnLeavingDiag(state, next);
     }
     case "display/sleep":
-      return { ...state, display: { ...state.display, isBacklit: false, mode: "DEFAULT" } };
+      return forgetClockFlagOnLeavingDiag(state, {
+        ...state,
+        display: { ...state.display, isBacklit: false, mode: "DEFAULT" },
+      });
     case "sensors/internal/status":
       return { ...state, sensors: { ...state.sensors, internal_status: action.payload } };
     case "push/result":
