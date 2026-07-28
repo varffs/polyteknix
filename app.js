@@ -45,7 +45,17 @@ listener.startListening({
 // LED hardware sync — fires only when isLit actually changes
 listener.startListening({
   predicate: (_action, curr, prev) => curr.led.isLit !== prev.led.isLit,
-  effect: (_action, api) => led.write(api.getState().led.isLit),
+  // write() is async and the blink loop drives it up to 40x a minute, where the
+  // backlight is written twice a day. Awaiting it inside a catch keeps a failed
+  // GPIO write to one readable line instead of a listenerMiddleware/error
+  // stack trace, and keeps the failure out of the blink loop.
+  effect: async (_action, api) => {
+    try {
+      await led.write(api.getState().led.isLit);
+    } catch (e) {
+      console.error("led write failed:", e.message);
+    }
+  },
 });
 
 registerLedBlink(listener, {
@@ -118,6 +128,12 @@ if (isVirtualMode()) {
 button.watch(() => store.dispatch(buttonPress()));
 
 process.on("SIGINT", async () => {
+  // First, before any hardware is torn down: cancel every pending listener
+  // task. Otherwise the blink loop's in-flight api.delay fires after
+  // led.cleanup() has unexported the pin and spends the rest of the shutdown
+  // writing to a closed fd. Also cancels the pending backlight timeout, which
+  // is what we want on the way out.
+  listener.clearListeners();
   clearInterval(poll);
   clearInterval(push);
   await led.cleanup();

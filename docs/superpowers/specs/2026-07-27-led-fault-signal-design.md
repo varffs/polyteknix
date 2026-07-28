@@ -193,7 +193,16 @@ Consequences worth stating:
 - **Blink effect** owns *may I light it right now* — calls `Date.now()`, calls `isQuietPeriod`,
   dispatches a plain boolean.
 - **Hardware sync listener** owns the GPIO write: predicate `curr.led.isLit !== prev.led.isLit`
-  → `led.write(isLit)`. Identical in shape to the existing backlight sync listener in `app.js`.
+  → `led.write(isLit)`. Same predicate shape as the existing backlight sync listener in `app.js`,
+  but the effect is `async` and `await`s the write inside a `try/catch` that logs. `write()` is
+  async, and this pin is written up to 40 times a minute where the backlight is written twice a
+  day, so a failing write should cost one readable line rather than a
+  `listenerMiddleware/error` stack trace per pulse.
+- **Shutdown** calls `listener.clearListeners()` as the first line of the `SIGINT` handler,
+  before any `cleanup()`. It aborts every executing listener, so the blink loop's in-flight
+  `api.delay` cannot fire after `led.cleanup()` has unexported the pin and spend the rest of the
+  shutdown writing to a closed fd. It also cancels the pending backlight timeout, which is
+  wanted on the way out.
 
 ## State shape
 
