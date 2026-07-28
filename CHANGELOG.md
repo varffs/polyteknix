@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Button LED now signals an unacknowledged fault instead of being permanently on. It pulses (750 ms on / 2250 ms off) when the external probe, the internal AHT20, the iotplotter push or the boot clock is faulty, and goes dark once the fault has been seen on the DIAG screen.
 - Night suppression: the LED is silent between sunset + 30 min and sunrise − 30 min, computed locally from the site coordinates via `suncalc`. No network call.
-- Internal sensor health and push failures are now tracked in state; the DIAG screen shows `int` / `psh` / `clk` flags when those faults are live.
+- The DIAG screen line 0 continues showing the external sensor status; line 1 now displays non-external fault flags (`int` / `psh` / `clk`) when any are live, displacing the diagnostic text.
 - `LED_IGNORE_QUIET=true` bypasses night suppression for development.
 
 ### Changed
