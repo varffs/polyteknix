@@ -14,7 +14,9 @@ module.exports = {
     {
       name: "polyteknix",
       script: "app.js",
-      cwd: "/home/polyteknix/polyteknix",
+      // this file sits in the repo root, so __dirname tracks wherever the
+      // repo is checked out — fresh device or different user included
+      cwd: __dirname,
       // Timestamp log lines. The 2026-07-28 push-failure investigation had
       // nothing to date the errors with except the log file's mtime.
       time: true,
