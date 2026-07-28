@@ -1,4 +1,4 @@
-import { selectFaultKey } from "./faults.js";
+import { selectFaults, selectFaultKey } from "./faults.js";
 
 export const initialState = {
   data: {
@@ -46,9 +46,9 @@ export const ledLit = (lit) => ({ type: "led/lit", payload: lit });
  *  been read, and it must go or it displaces the external diagnostic on line 1
  *  for the rest of the process. Both ways out of DIAG count as read: cycling
  *  on (DIAG wraps to DEFAULT) and the backlight timing out. Clearing it here
- *  rather than on entry is what lets DIAG render "clk" at all; safe only
- *  because selectArmed compares by containment, so the live set losing "clk"
- *  after acknowledgement is not a new fault. */
+ *  rather than on entry is what lets DIAG render "clk" at all; safe because
+ *  losing a fault never arms — selectArmed compares by containment, and the
+ *  post-pass narrows "clk" out of the acknowledgement in the same dispatch. */
 const forgetClockFlagOnLeavingDiag = (prev, next) =>
   prev.display.mode === "DIAG" && next.led.clockWasInsane
     ? { ...next, led: { ...next.led, clockWasInsane: false } }
@@ -82,9 +82,9 @@ function baseReducer(state = initialState, action) {
         // fault detail — that IS the acknowledgement. Capture the key from the
         // current state, "clk" included, and leave clockWasInsane raised: the
         // screen this press opens is the only one that reports it, and DIAG's
-        // line 1 is derived from the same state. selectArmed compares by set
-        // containment, so an acknowledgement holding a "clk" the live key
-        // later loses does not re-arm.
+        // line 1 is derived from the same state. "clk" is live at this instant
+        // so it survives the post-pass narrowing; it is dropped from the
+        // acknowledgement later, when leaving DIAG clears the flag.
         return { ...next, led: { ...next.led, seenFaultKey: selectFaultKey(next) } };
       }
       return forgetClockFlagOnLeavingDiag(state, next);
@@ -129,14 +129,30 @@ function baseReducer(state = initialState, action) {
   }
 }
 
-/** A fault can clear via several different actions. Normalising once, after
- *  the switch, means no path can forget to drop a stale acknowledgement — and
- *  without that drop, a fault that clears and returns would stay silent. */
-const forgetAcknowledgementWhenHealthy = (state) =>
-  state.led.seenFaultKey !== null && selectFaultKey(state) === ""
-    ? { ...state, led: { ...state.led, seenFaultKey: null } }
-    : state;
+/** An acknowledgement covers only the faults that were still live when it was
+ *  made: intersect it with the live set after every action, so a fault that
+ *  clears and later returns is new again and re-arms. Narrowing rather than
+ *  only resetting at full health matters because ext is permanently live on
+ *  this device — the key never reaches "", so a reset conditioned on that could
+ *  never fire and the acknowledged set only ever grew, silencing every genuine
+ *  recurrence of int or psh for the rest of the process. Full health is now
+ *  just the case where the intersection comes out empty.
+ *
+ *  A fault can clear via several different actions, so doing this once after
+ *  the switch means no path can forget. Empty normalises to null, never "":
+ *  "" is not a valid stored key and must not become observable in state.
+ *  Ordering comes from selectFaults, so the string keeps FAULT_ORDER. */
+const narrowAcknowledgementToLiveFaults = (state) => {
+  const { seenFaultKey } = state.led;
+  if (seenFaultKey === null) return state;
+  const seen = new Set(seenFaultKey ? seenFaultKey.split("|") : []);
+  const kept = selectFaults(state).filter((key) => seen.has(key));
+  const narrowed = kept.length > 0 ? kept.join("|") : null;
+  return narrowed === seenFaultKey
+    ? state
+    : { ...state, led: { ...state.led, seenFaultKey: narrowed } };
+};
 
 export function appReducer(state = initialState, action) {
-  return forgetAcknowledgementWhenHealthy(baseReducer(state, action));
+  return narrowAcknowledgementToLiveFaults(baseReducer(state, action));
 }

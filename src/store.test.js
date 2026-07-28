@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { appReducer, initialState, setInternalTemp, setExternalStatus, buttonPress, sleep, recordSample, setInternalStatus, pushResult, ledLit, HISTORY_MAX_SAMPLES, HISTORY_WINDOW_MS, SANITY_EPOCH } from "./store.js";
 import { formatMinMaxLines } from "./render.js";
-import { selectArmed, selectFaults, selectFaultKey } from "./faults.js";
+import { selectArmed, selectFaults, selectFaultKey, PUSH_FAILURE_THRESHOLD } from "./faults.js";
 
 /** dark -> wake (DEFAULT), then MINMAX, DAYCOMP, DIAG. */
 const pressToDiag = (state) => {
@@ -197,7 +197,11 @@ test("leaving DIAG clears the sticky clock flag without re-arming", () => {
 
   s = appReducer(s, buttonPress()); // DIAG -> DEFAULT, the flag has been read
   assert.equal(s.led.clockWasInsane, false);
-  assert.equal(s.led.seenFaultKey, "clk|ext", "the acknowledgement outlives the flag");
+  assert.equal(
+    s.led.seenFaultKey,
+    "ext",
+    "clk is no longer live, so the acknowledgement narrows to what is",
+  );
   assert.equal(selectArmed(s), false, "live {ext} is contained by the acknowledged set");
 });
 
@@ -265,4 +269,51 @@ test("going healthy drops the acknowledgement so a recurrence re-arms", () => {
 
   s = appReducer(s, setExternalStatus({ status: "absent", detail: "no bus" }));
   assert.equal(s.led.seenFaultKey, null, "the same fault returning must count as new");
+});
+
+const failPushToThreshold = (state) => {
+  let s = state;
+  for (let i = 0; i < PUSH_FAILURE_THRESHOLD; i += 1) s = appReducer(s, pushResult(false));
+  return s;
+};
+
+test("a fault clearing narrows the acknowledgement while another fault stays live", () => {
+  let s = appReducer(initialState, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = appReducer(s, setInternalStatus("error"));
+  s = pressToDiag(s);
+  assert.equal(s.led.seenFaultKey, "int|ext");
+
+  s = appReducer(s, setInternalStatus("ok"));
+  assert.equal(s.led.seenFaultKey, "ext", "an acknowledgement covers only faults still live");
+  assert.equal(selectArmed(s), false, "the surviving fault is still acknowledged");
+});
+
+// ext is permanently live on this device until the probe is replaced, so the
+// fault key never reaches "" and the whole-key reset can never fire. Without
+// the intersection the acknowledged set only ever grew, and a genuine second
+// 15-minute push outage went unsignalled for the rest of the process.
+test("a fault that clears and returns re-arms even though another fault never clears", () => {
+  let s = appReducer(initialState, setExternalStatus({ status: "absent", detail: "no bus" }));
+  s = pressToDiag(s); // ack {ext}
+  s = appReducer(s, sleep());
+
+  s = failPushToThreshold(s);
+  assert.equal(selectArmed(s), true, "the first push outage arms");
+  s = pressToDiag(s); // ack {psh, ext}
+  assert.equal(s.led.seenFaultKey, "psh|ext");
+  s = appReducer(s, sleep());
+
+  s = appReducer(s, pushResult(true)); // push recovers
+  assert.equal(selectArmed(s), false, "a fault clearing is not news");
+  assert.equal(s.led.seenFaultKey, "ext");
+
+  s = failPushToThreshold(s);
+  assert.equal(selectFaultKey(s), "psh|ext");
+  assert.equal(selectArmed(s), true, "a second outage is a new fault, not a pre-acknowledged one");
+});
+
+test("entering DIAG on a healthy device acknowledges nothing rather than an empty key", () => {
+  const s = pressToDiag(initialState);
+  assert.equal(s.display.mode, "DIAG");
+  assert.equal(s.led.seenFaultKey, null, '"" must never become observable in state');
 });
