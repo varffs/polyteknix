@@ -83,6 +83,11 @@ so `psh|ext` acknowledged, then push recovering to `ext`, pulsed the LED at a st
 situation the user had already read. With `ext` permanently live on this device that fired for
 every transient fault that cleared after acknowledgement.
 
+Containment alone is not enough, because it makes the acknowledged set monotonic. It is paired
+with the intersection rule under **Acknowledgement** below, which keeps the set narrowed to what
+is actually live — without that pairing, removing the false alarm also removes the only thing
+that ever shrank the set, and a fault that clears and returns never signals again.
+
 ## Acknowledgement
 
 Entering `DIAG` mode acknowledges the current fault set. Reaching DIAG requires pressing the
@@ -110,8 +115,28 @@ line 1 for the rest of the process.
 
 Further rules:
 
-- Fault key becomes `""` (everything healthy) → `seenFaultKey` resets to `null`, so a
-  recurrence of the same fault re-arms rather than being silently pre-acknowledged.
+- **An acknowledgement covers only faults that are still live.** After every action,
+  `seenFaultKey` is intersected with the live fault set, so a fault that clears and later
+  returns re-arms rather than being silently pre-acknowledged. Everything going healthy is
+  just the case where the intersection comes out empty, which normalises to `null`; `""` is
+  not a valid stored key and never becomes observable in state.
+
+  Narrowing on every action rather than only resetting at full health is not tidiness — it is
+  the difference between the rule working and not working on *this* device. The external probe
+  is physically dead and `ext` stays live until it is replaced, so the fault key never reaches
+  `""` and a reset conditioned on that can never fire. Without the intersection the
+  acknowledged set only ever grows: `psh|ext` acknowledged, push recovers, push fails for a
+  second sustained 15 minutes — and the LED stays dark, because `psh` is still sitting in the
+  acknowledgement from the outage before. `int` behaves the same. The signal dies silently for
+  the remaining uptime of the pm2 process.
+
+  The intersection composes with containment rather than replacing it. At the moment a fault
+  clears, the acknowledgement narrows *and* the live set shrinks, so the live set stays a
+  subset and the LED correctly stays dark; it is the fault's *return*, into an acknowledgement
+  that no longer mentions it, that arms. `clk` is the ordering case worth stating: DIAG entry
+  captures the key with `clk` in it, and because the flag is still raised at that instant the
+  intersection in the same dispatch keeps it — it is dropped one dispatch later, by leaving
+  DIAG clearing the flag.
 - Restart re-arms, because `seenFaultKey` starts `null` and is not persisted. Deliberate: an
   unexplained restart is itself worth knowing about, and this device holds no state across
   reboots by design.
@@ -208,7 +233,7 @@ Consequences worth stating:
 
 ```js
 led: {
-  seenFaultKey: null,      // fault key at last acknowledgement; null = nothing acknowledged
+  seenFaultKey: null,      // acknowledged faults, narrowed to those still live; null = none
   isLit: false,            // desired GPIO state; hardware listener mirrors it
   clockWasInsane: false,   // sticky, cleared on leaving DIAG
 },
@@ -272,11 +297,13 @@ Coverage required:
   statuses excluded.
 - Acknowledgement: arms on new fault, disarms on DIAG entry, re-arms when a fault appears that
   is **not** in the acknowledged set, does **not** re-arm when the set only shrinks, resets
-  `seenFaultKey` when everything goes healthy. The clock flag survives DIAG entry (so line 1 can
-  render `clk`), is cleared by both exits from DIAG, and does not re-arm when cleared. Any test
-  asserting a DIAG-mode state must reach it by dispatching `buttonPress` through the real
-  reducer — a hand-built `{ mode: "DIAG", clockWasInsane: true }` is unreachable and gives false
-  confidence.
+  `seenFaultKey` when everything goes healthy. A fault clearing while another stays live must
+  shrink the acknowledged set, and that fault returning must re-arm — tested **without** ever
+  passing through full health, since on this device it is unreachable. The clock flag survives
+  DIAG entry (so line 1 can render `clk`), is cleared by both exits from DIAG, and does not
+  re-arm when cleared. Any test asserting a DIAG-mode state must reach it by dispatching
+  `buttonPress` through the real reducer — a hand-built
+  `{ mode: "DIAG", clockWasInsane: true }` is unreachable and gives false confidence.
 - Blink loop: pulses while armed, exits on disarm, leaves `isLit` false on exit, idles at the
   recheck interval while quiet, never dispatches `lit: true` while quiet.
 - Push counter: increments on failure, resets on success, threshold at 3, ignores the no-key
