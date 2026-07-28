@@ -171,3 +171,37 @@ test("renderDisplay defaults now to the current clock", () => {
   renderDisplay(state, display);
   assert.equal(display.calls[1][2], "i24 L7 H7");
 });
+
+test("DIAG shows the diagnostic when only the external sensor is faulty", () => {
+  const state = {
+    ...initialState,
+    sensors: { ...initialState.sensors, external_status: "absent", external_diagnostic: "not on bus" },
+  };
+  assert.deepEqual(formatDiagLines(state), ["ext: absent", "not on bus"]);
+});
+
+test("DIAG shows fault flags when a non-external fault is live", () => {
+  const state = {
+    ...initialState,
+    sensors: {
+      ...initialState.sensors,
+      external_status: "absent",
+      external_diagnostic: "not on bus",
+      internal_status: "error",
+      push_failures: 3,
+    },
+    led: { ...initialState.led, clockWasInsane: true },
+  };
+  const [line0, line1] = formatDiagLines(state);
+  assert.equal(line0, "ext: absent");
+  assert.equal(line1, "int psh clk");
+  assert.ok(line1.length <= 16);
+});
+
+test("DIAG flags appear even when the external sensor is fine", () => {
+  const state = {
+    ...initialState,
+    sensors: { ...initialState.sensors, external_status: "ok", internal_status: "error" },
+  };
+  assert.deepEqual(formatDiagLines(state), ["ext: ok", "int"]);
+});
