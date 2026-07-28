@@ -23,7 +23,7 @@ DIAG screen, and is suppressed entirely during true night regardless of fault st
 Three conditions must hold simultaneously for the LED to be lit:
 
 1. at least one fault is active, **and**
-2. the current fault set differs from the one last acknowledged, **and**
+2. at least one active fault is **not in** the set last acknowledged, **and**
 3. it is not the quiet period (sunset + 30 min → sunrise − 30 min).
 
 There is no state in which the LED is steadily on. The lit state is a 750 ms pulse inside a
@@ -73,8 +73,15 @@ flag is cleared on acknowledgement, not by the clock becoming sane.
 selectFaultKey(state) // → "int|psh|clk|ext" subset, fixed order, "" when healthy
 ```
 
-Fixed order makes the key a stable identity for a fault *set*, so "the same problems as before"
-and "a new problem appeared" are distinguishable by string comparison alone.
+Fixed order makes the key a stable identity for a fault *set*, so an acknowledgement can be
+stored as one serializable string.
+
+`selectArmed` then tests **containment, not string equality**: armed when some live fault is
+absent from the acknowledged set, derived by splitting `seenFaultKey` on `|`. The first draft
+compared the two keys with `!==`, which re-armed on *any* change including the set shrinking —
+so `psh|ext` acknowledged, then push recovering to `ext`, pulsed the LED at a strictly improved
+situation the user had already read. With `ext` permanently live on this device that fired for
+every transient fault that cleared after acknowledgement.
 
 ## Acknowledgement
 

@@ -26,7 +26,16 @@ export const selectFaults = (state) => {
 
 export const selectFaultKey = (state) => selectFaults(state).join("|");
 
+/** seenFaultKey is stored as the joined string so state stays serializable;
+ *  comparison needs the set, so unpack it here. null / "" = nothing seen. */
+const seenSet = (seenFaultKey) => new Set(seenFaultKey ? seenFaultKey.split("|") : []);
+
+/** Armed when some LIVE fault has not been looked at. Containment, not string
+ *  equality: a set that only shrinks means every fault still present has been
+ *  acknowledged and the situation strictly improved, which is not worth a walk
+ *  outside — equality re-armed on that, and with ext permanently live here it
+ *  fired for every transient fault that cleared after being acknowledged. */
 export const selectArmed = (state) => {
-  const key = selectFaultKey(state);
-  return key !== "" && key !== state.led.seenFaultKey;
+  const seen = seenSet(state.led.seenFaultKey);
+  return selectFaults(state).some((key) => !seen.has(key));
 };

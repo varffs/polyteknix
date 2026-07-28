@@ -39,7 +39,7 @@ test("multiple faults come out in fixed order regardless of how they arose", () 
   assert.equal(selectFaultKey(state), "int|psh|clk|ext");
 });
 
-test("armed only when the live key differs from the acknowledged one", () => {
+test("armed only when a live fault is missing from the acknowledged set", () => {
   const faulty = withState({ sensors: { external_status: "absent" } });
   assert.equal(selectArmed(faulty), true);
 
@@ -54,4 +54,40 @@ test("armed only when the live key differs from the acknowledged one", () => {
     led: { seenFaultKey: "ext" },
   });
   assert.equal(selectArmed(worsened), true, "a new fault on top of an acknowledged one must re-arm");
+});
+
+// ext is permanently live on this device until the probe is replaced, so the
+// shrinking-set case is the common one: every transient int/psh that gets
+// acknowledged and then clears used to raise a false alarm.
+test("a fault clearing does not re-arm when every remaining fault was acknowledged", () => {
+  const both = withState({
+    sensors: { external_status: "absent", push_failures: PUSH_FAILURE_THRESHOLD },
+    led: { seenFaultKey: "psh|ext" },
+  });
+  assert.equal(selectArmed(both), false);
+
+  const pushRecovered = withState({
+    sensors: { external_status: "absent", push_failures: 0 },
+    led: { seenFaultKey: "psh|ext" },
+  });
+  assert.equal(
+    selectArmed(pushRecovered),
+    false,
+    "the set shrinking is strictly better news, not a new fault",
+  );
+});
+
+test("an acknowledged key holding a fault the live set has lost does not re-arm", () => {
+  // The sticky clock flag is cleared on leaving DIAG, so seenFaultKey outlives
+  // it by design. Containment is what makes that safe.
+  const state = withState({
+    sensors: { external_status: "absent" },
+    led: { seenFaultKey: "clk|ext" },
+  });
+  assert.equal(selectArmed(state), false);
+});
+
+test("a healthy device is never armed however stale the acknowledged key", () => {
+  const state = withState({ sensors: { external_status: "ok" }, led: { seenFaultKey: "psh|ext" } });
+  assert.equal(selectArmed(state), false);
 });
