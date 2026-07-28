@@ -60,3 +60,19 @@ test("pollInternal on dead sensor dispatches null temp + null humidity and does 
   assert.equal(temp.payload, null);
   assert.equal(humidity.payload, null);
 });
+
+test("pollInternal reports ok on a good read", async () => {
+  const sensor = { read: async () => ({ temperature: 21, humidity: 55 }) };
+  const actions = [];
+  await pollInternal(sensor, (a) => actions.push(a));
+  const status = actions.find((a) => a.type === "sensors/internal/status");
+  assert.equal(status.payload, "ok");
+});
+
+test("pollInternal reports error when the read throws", async () => {
+  const sensor = { read: async () => { throw new Error("i2c timeout"); } };
+  const actions = [];
+  await pollInternal(sensor, (a) => actions.push(a));
+  const status = actions.find((a) => a.type === "sensors/internal/status");
+  assert.equal(status.payload, "error");
+});
