@@ -1064,7 +1064,7 @@ const external = await createSensor({ type: "ds18b20", id: cfg.externalSensorId,
 ```
 
 Run: `LED_IGNORE_QUIET=true npm run dev`
-Expected: after the first poll, `[LED GPIO 17] 🔴 ON` / `⚫ OFF` alternating on a 3-second cycle. Press `1` four times to reach DIAG; the pulsing stops and does not resume.
+Expected: after the first poll, `[LED GPIO 17] 🔴 ON` / `⚫ OFF` alternating on a 3-second cycle. Press `1` three times to reach DIAG; the pulsing stops and does not resume. (Three, not four: boot dispatches a `buttonPress` of its own, so the screen is already awake on DEFAULT before you touch anything.)
 
 Then run it again **without** the override:
 
